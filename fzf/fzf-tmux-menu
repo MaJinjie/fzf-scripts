@@ -20,7 +20,3 @@ tmux display-menu -T "Choose direction" \
   "Full Vertical Top Split" K "splitw -bvf zsh -c \"$EDITOR $args\"" \
   "Full Vertical Buttom Split" J "splitw -vf zsh -c \"$EDITOR $args\"" \
   || return 1
-
-# This needs fixed
-# exec {fd}<$fifo
-# exec {NVIM_FIFO}>&-
