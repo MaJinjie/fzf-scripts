@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# Desc: open most recently viewed files in nvim with fzf
+
+[ "$oldfiles" ] || oldfiles="/tmp/nv-oldfiles.tmp"
+nvim --headless -c "call append(0, v:oldfiles)" \
+	-c "write! $oldfiles" \
+	-c exit 1>/dev/null 2>&1
+
+[[ -v TMUX ]] && FZF_BIN=(fzf-tmux $FZF_TMUX_OPTS)
+
+while read -r file
+do
+	[[ -e $file ]] && DIRECTORES+="$file "
+done < $oldfiles
+
+FLAG=/tmp/$$
+trap "command rm -f $FLAG" EXIT SIGINT SIGTERM
+result="$(
+	${FZF_BIN[@]:-fzf}  \
+		--select-1 \
+		--exit-0 \
+		--delimiter / \
+		--with-nth -3,-2,-1 \
+    --bind="alt-e:transform:touch $FLAG; echo accept-non-empty" \
+    --bind='enter:accept-non-empty' \
+		--prompt="Oldfiles> " < <(echo $DIRECTORES | tr ' ' '\n' | sed '/^\/tmp/d' | lscolors)
+)"
+
+
+if [[ -n "$result" ]]; then
+  [[ -e $FLAG ]] && fzf-tmux-menu $(realpath $result) || ${EDITOR} $result
+fi

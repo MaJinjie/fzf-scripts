@@ -1,0 +1,23 @@
+#!/usr/bin/env zsh
+
+# Desc: fzf wrapper for uni
+# https://github.com/arp242/uni
+
+dmenu="fzf"
+
+# copy="xclip -rmlastnl -selection clipboard"
+copy='wl-copy -n'
+
+# Common emojis I use >99% of the time:
+common="-or g:smileys g:hand-fingers-open g:hand-fingers-partial g:hand-single-finger g:hand-fingers-closed g:hands g:body-parts g:person-gesture"
+
+#common="$common -gender male"
+#common="$common -tone mediumdark"
+
+case "${1:-all}" in
+  (all)          uni -q p all | $dmenu | grep -o "^'.'" | tr -d "'" | eval $copy ;;
+  (emoji)        uni -q e all | $dmenu | cut -d ' ' -f1 | eval $copy ;;
+  (emoji-common) uni -q e $common | $dmenu | cut -d ' ' -f1 | eval $copy ;;
+  (*)            uni -q e $@ | $dmenu | cut -d ' ' -f1 | eval $copy ;;
+esac
+#*)             echo >&2 "dmenu-uni: unknown '$1'" ;;

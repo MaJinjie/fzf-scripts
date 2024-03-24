@@ -1,0 +1,26 @@
+#!/usr/bin/env zsh
+
+# Desc: fzf tmux with neovim not block
+
+emulate -L zsh
+local args
+
+[[ -z $TMUX ]] && return 1
+
+(( $# == 0 )) && args="" || args="${(z)@}"
+
+tmux display-menu -T "Choose direction" \
+  "Horizontal Left Split" h "splitw -bh zsh -c \"$EDITOR $args\"" \
+  "Horizontal Right Split" l "splitw -h zsh -c \"$EDITOR $args\"" \
+  "Vertical Top Split" k "splitw -bv zsh -c \"$EDITOR $args\"" \
+  "Vertical Buttom Split" j "splitw -v zsh -c \"$EDITOR $args\"" \
+  "Vertical Buttom Split" w "neww -n nvim-append zsh -c \"$EDITOR $args\"" \
+  "Full Horizontal Left Split" H "splitw -bhf zsh -c \"$EDITOR $args\"" \
+  "Full Horizontal Right Split" L "splitw -hf zsh -c \"$EDITOR $args\"" \
+  "Full Vertical Top Split" K "splitw -bvf zsh -c \"$EDITOR $args\"" \
+  "Full Vertical Buttom Split" J "splitw -vf zsh -c \"$EDITOR $args\"" \
+  || return 1
+
+# This needs fixed
+# exec {fd}<$fifo
+# exec {NVIM_FIFO}>&-

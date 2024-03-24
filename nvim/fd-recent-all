@@ -1,0 +1,36 @@
+#!/bin/env bash
+
+[[ -v TMUX ]] && FZF_BIN=(fzf-tmux $FZF_TMUX_OPTS )
+  
+typeset -a DIRECTORES ARGS
+
+if [[ $# > 0 && $1 =~ ^[0-9]+(d|h|weeks|min)$ ]]; then
+  DATE=$1
+  shift
+fi
+
+for arg in "$@"
+do 
+  [[ ! -d $arg ]] && info "$arg not a directory" ||
+    DIRECTORES+=($arg)
+done
+
+ARGS=(
+  "--color=always"
+  "--hidden"
+  "--follow"
+  "--max-depth=8"
+  "--changed-after=${DATE:-1d}"
+)
+
+FLAG=/tmp/$$
+trap "command rm -f $FLAG" EXIT SIGINT SIGTERM
+result=$(fd -tf ${ARGS[@]} ${DIRECTORES[@]:+'^'} ${DIRECTORES[@]} |
+  ${FZF_BIN[@]:-fzf} --prompt 'Files> ' +m \
+  --delimiter / --with-nth=1,-3..-1 \
+  --bind="alt-e:transform:touch $FLAG; echo accept-non-empty" \
+  --bind='enter:accept')
+
+if [[ -n "$result" ]]; then
+  [[ -e $FLAG ]] && fzf-tmux-menu $(realpath $result) || ${EDITOR} $result
+fi
