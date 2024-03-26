@@ -1,0 +1,63 @@
+#!/bin/env bash
+
+[[ -v TMUX ]] && FZF_BIN=(fzf-tmux $FZF_TMUX_OPTS )
+  
+typeset -a DIRECTORES ARGS
+
+while getopts "m:n:t:dflx" opt
+do
+  case $opt in 
+    f)
+      TYPES+=("-tf");;
+    d)
+      TYPES+=("-td");;
+    l)
+      TYPES+=("-tl");;
+    x)
+      TYPES+=("-tx");;
+    m)
+      max_depth=$OPTARG;;
+    n)
+      min_depth=$OPTARG;;
+    t)
+      time="$OPTARG";;
+    ?)
+      echo "there is unrecognized parameter."
+      echo "opts: fdlxmnt."
+      exit 1
+  esac
+done
+shift $[OPTIND - 1]
+
+
+ARGS=(
+  "${TYPES[@]:--tf}"
+  "--color=always"
+  "--hidden"
+  "--follow"
+  "--max-depth=${max_depth:-8}"
+  "--min-depth=${min_depth:-1}"
+  "${time:+--changed-after=${time}}"
+)
+
+for arg in "$@"
+do 
+  if [[ ! -d $arg ]]; then
+    echo "$arg not a directory"
+    exit 1
+  else
+    DIRECTORES+=($arg)
+  fi
+done
+
+FLAG=/tmp/$$
+trap "command rm -f $FLAG" EXIT SIGINT SIGTERM
+result=$(fd ${ARGS[@]} ${DIRECTORES[@]:+'^'} ${DIRECTORES[@]} |
+  ${FZF_BIN[@]:-fzf} --prompt 'Files> ' \
+  --delimiter / --with-nth=-3..-1 \
+  --bind="alt-e:transform:touch $FLAG; echo accept-non-empty" \
+  --bind='enter:accept')
+
+if [[ -n "$result" ]]; then
+  [[ -e $FLAG ]] && fzf-tmux-menu $(realpath $result) || ${EDITOR} $result
+fi
