@@ -1,203 +1,263 @@
 #!/bin/env bash
 
-# 改良（使用while 循环遍历）
-# 1. 使用 -- 来声明 iglob通配符表达式,可以有多个, 可以在任意位置
-# 2. 使用 & 来连接多个正则表达式，实现类似连续模糊查找的效果,可以在任意位置
-# （对于单个正则，它的效果和原来相同, 内部使用.*来连接）
-# （多个连续的&没有效果（符合逻辑）)
-# 3. 尝试解决\b在bash和正则之间的冲突，可惜没有成功。\b 需要键入\\b,其他如常
-# 4. 使用 REGEX_SEPARATE IGLOB_SEPARATE CONNECT_REGEX 变量代替字面量
-# 例如 ^env & cb &cd => ^env.*cb.cd
-#      -- *ab* *fd* -- a* => --iglob *ab* *fd* a*
-#      -- *fd* & ^fd -- *rg*&cd => --iglob *fd* *rg*    ^fd.*cd
-#
-#
-# 如有需要可添加：-- 可以识别 H F D[\d] ... 展开为 --hidden --follow --max-depth=\d ... 
-# 例如 -- *fd* H *rg* D4 => --iglob *fd* --iglob *rg* --hidden --max-depth=4
-# 只需要添加一个case即可
-
 REGEX_SEPARATE="&"
 IGLOB_SEPARATE="--"
 CONNECT_REGEX=".*"
-[[ -v TMUX ]] && FZF_BIN=(fzf-tmux "-p85%,90%")
-  
-if [[ $# > 0 && ! -e $1 ]]; then
-  INITIAL_QUERY=$1
-  shift
-fi
+typeset -A MARKS_LIST=(
+    [nv]="$HOME/.config/${NVIM_APPNAME:-nvim}/lua"
+    [zsh]="$HOME/.config/zsh"
+    [zzd]="$HOME/.config/zsh/zsh.d"
+    [zzt]="$HOME/.config/zsh/zinit"
+    [lbin]="$HOME/.local/bin"
+    [home]="$HOME"
+    [git]="$HOME/git"
+    [dot]="$HOME/dotfiles"
+)
 
-for arg in "$@"
-do 
-  [[ ! -d $arg ]] && info "$arg not a directory" ||
-    DIRECTORES+="$arg "
-done
+help() {
+    >&2 echo 'usage: rg [OPTIONS] [DIRECTORES] [--] [DIRECTORY MARKS]
 
-FLAG=/tmp/$$
-FILE_R="/tmp/rg$$"
-FILE_F="/tmp/fzf$$"
-trap "command rm -f $FLAG $FILE_R $FILE_F" EXIT SIGINT SIGTERM
-RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case --hidden --follow"
-TRANSFORM_IGLOB="
-setopt extended_glob
-fzf_query=\${\${FZF_QUERY## ##}%% ##}
-let i=len=flag=0
-while [[ i -lt \${#fzf_query} ]]; do
-  if [[ \${fzf_query:\$i:${#REGEX_SEPARATE}} == '${REGEX_SEPARATE}' || \${fzf_query:\$i:${#IGLOB_SEPARATE}} == '${IGLOB_SEPARATE}' ]]; then
-    if [[ flag -eq 0 ]]; then
-      append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-      search_str+=\"\${append_str:+\${search_str:+${CONNECT_REGEX}}}\$append_str\"
-    else
-      for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
-      do
-        iglob_str+=\"'--iglob=\$iglob_entry' \"
-      done
+    OPTIONS:
+        -x executable files
+        -t changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
+        -D max-depth
+        -h cancel --hidden
+        -n --no-ignore
+        -g ls git files (mdkois)
+        --
+        add marks ...
+    '
+    exit
+}
+
+parse_args() {
+    typeset changed_time type max_depth=8 no_ignore hidden=true
+
+    args=$(getopt -o xhnD:t::g:: -n "$0" -- "$@")
+
+    if [[ $? != 0 ]]; then
+        echo "getopt parse error"
+        exit 1
     fi
-    [[ \${fzf_query:\$i:${#REGEX_SEPARATE}} == '${REGEX_SEPARATE}' ]] && let flag=0,len=0,i+=${#REGEX_SEPARATE} 
-    [[ \${fzf_query:\$i:${#IGLOB_SEPARATE}} == '${IGLOB_SEPARATE}' ]] && let flag=1,len=0,i+=${#IGLOB_SEPARATE}
-  else
-    let len++,i++
-  fi
-done
-if [[ len -gt 0 ]]; then
-  if [[ flag -eq 0 ]]; then
-    append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-    search_str+=\"\${append_str:+\${search_str:+${CONNECT_REGEX}}}\$append_str\"
-  else
-    for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
+
+    eval set -- "$args"
+
+    while true
     do
-      iglob_str+=\"'--iglob=\$iglob_entry' \"
+        case "$1" in
+            -g)
+                if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+                    echo "not a git directory"
+                    exit 1
+                fi
+                if [[ -n $2 ]]; then
+                    flags=$2
+                    let i=0
+                    while [[ $i -lt ${#flags} ]]; do
+                        case ${flags:$i:1} in
+                            m)
+                                GIT_FLAGS+=("--modified")
+                                ;;
+                            d)
+                                GIT_FLAGS+=("--deleted")
+                                ;;
+                            s)
+                                GIT_FLAGS+=("--stage")
+                                ;;
+                            k)
+                                GIT_FLAGS+=("--killed")
+                                ;;
+                            i)
+                                GIT_FLAGS+=("--ignored")
+                                ;;
+                            o)
+                                GIT_FLAGS+=("--others")
+                                ;;
+                            *)
+                                echo "flag error"
+                                exit 1
+                                ;;
+                        esac
+                        let i++
+                    done
+                fi
+                GIT=true
+                shift 2
+                ;;
+            -x)
+                type="-tx"
+                shift
+                ;;
+            -t)
+                case $2 in
+                    "")
+                        changed_time="--changed-after=1d"
+                        ;;
+                    *)
+                        changed_time="--changed-after=$2"
+                        ;; 
+                esac 
+                shift 2
+                ;;
+            -h)
+                unset hidden
+                shift
+                ;;
+            -n)
+                no_ignore=true
+                shift
+                ;;
+            -D)
+                max_depth=$2
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            ?)
+                echo "args $1 $2 error"
+                exit 1
+                ;;
+        esac
     done
-  fi
-fi
-echo \"reload:sleep 0.1; $RG_PREFIX \${iglob_str} '\$search_str' ${DIRECTORES} || true\"
-"
 
-result=$(: | ${FZF_BIN[@]:-fzf} --disabled --query "$INITIAL_QUERY" +m \
-  --bind "start:unbind(?)+reload:$RG_PREFIX {q} ${DIRECTORES}" \
-  --bind "change:transform:$TRANSFORM_IGLOB" \
-  --bind "ctrl-t:transform:[[ ! \$FZF_PROMPT =~ Rg ]] &&
-  echo \"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:echo \{q} > $FILE_F; cat $FILE_R\" ||
-  echo \"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:echo \{q} > $FILE_R; cat $FILE_F\"" \
-  --prompt 'Rg> ' \
-  --delimiter : \
-  --header 'CTRL-T: Switch between ripgrep/fzf' \
-  --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}' \
-  --preview-window 'default:right:60%:~1:+{2}+3/2:border-left' \
-  --bind="alt-e:transform:touch $FLAG; echo accept-non-empty" \
-  --bind 'enter:accept')
+    RG_OPTS=(
+        "--column"
+        "--line-number"
+        "--no-heading"
+        "--color=always"
+        "--smart-case"
+        "--follow"
+    )
+    if [[ -z $changed_time ]]; then
+        RG_OPTS+=(
+            "--max-depth=${max_depth}"
+            ${hidden:+--hidden}
+            ${no_ignore:+--no-ignore}
+        )
+    else
+        FD_OPTS=(
+            "--follow"
+            "--max-depth=${max_depth}"
+            "${type:--tf}"
+            ${hidden:+--hidden}
+            ${no_ignore:+--no-ignore}
+            ${changed_time}
+        )
+    fi
 
+    if [[ $# -gt 0 && ! -e "$1" ]]; then
+        INITIAL_QUERY="$1"
+        shift
+    fi
+    
+    for arg in "$@"
+    do
+        if [[ ! -d $arg ]]; then
+            echo "$arg is not a directory"
+            exit 1
+        fi
+        DIRECTORES+=("$arg")
+    done
+}
 
-if [[ -n "$result" ]]; then
-  file_path=$(echo "$result" | awk -F: '{print $1}')
-  line_number=$(echo "$result" | awk -F: '{print $2}')
-  [[ -e $FLAG ]] && fzf-tmux-menu $(realpath $file_path) +$line_number || ${EDITOR} $file_path +$line_number
-fi
+check_mark() {
+    for arg in "$@"
+    do
+        if [[ -d ${MARKS_LIST[$arg]} ]]; then
+            DIRECTORES+=("${MARKS_LIST[$arg]}")
+        else
+            echo "$arg not a mark"
+            exit 1
+        fi
+    done
+}
+main() {
+    [[ $# -gt 0 &&  "$1" == help ]] && help
+    [[ -v TMUX ]] && fzf_bin="fzf-tmux -p85%,90%"
 
+    typeset -a FD_OPTS RG_OPTS DIRECTORES GIT_FLAGS
+    typeset INITIAL_QUERY GIT
 
+    ((g=1))
+    while [[ g -le $# && "${!g}" != "--" ]]; do
+        ((g++))
+    done
 
-# 两点改良（使用while 循环遍历）
-# 1. 使用 -- 来声明 iglob通配符表达式,可以有多个, 可以在任意位置
-# 2. 使用 & 来连接多个正则表达式，实现类似连续模糊查找的效果,可以在任意位置
-# （对于单个正则，它的效果和原来相同, 内部使用.*来连接）
-# （多个连续的&&没有效果（符合逻辑）)
-# 3. 尝试解决\b在bash和正则之间的冲突，可惜没有成功。\b 需要键入\\b,其他如常
+    parse_args "${@:1:$g}"
 
-# TRANSFORM_IGLOB="
-# setopt extended_glob
-# fzf_query=\${\${FZF_QUERY## ##}%% ##}
-# let i=len=flag=0
-# echo '----------------------' >> ~/all.log
-# while [[ i -lt \${#fzf_query} ]]; do
-#   if [[ \${fzf_query:\$i:1} == '&' || \${fzf_query:\$i:2} == '--' ]]; then
-#     [[ i -lt \${#fzf_query} ]] && echo char \${fzf_query:\$i:1} >> ~/all.log
-#     echo entry start:\$[i-len] len:\$len \${fzf_query:\$[i-len]:\$len} >> ~/all.log
-#     
-#     if [[ flag -eq 0 ]]; then
-#       echo '进入到search' >> ~/all.log
-#       append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-#       search_str+=\"\${append_str:+\${search_str:+.*}}\$append_str\"
-#       echo search_str:\$search_str >> ~/all.log
-#     else
-#       echo '进入到iglob' >> ~/all.log
-#       for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
-#       do
-#         iglob_str+=\"'--iglob=\$iglob_entry' \"
-#       done
-#     fi
-#     [[ \${fzf_query:\$i:1} == '&' ]] && let flag=0,len=0,i+=1 
-#     [[ \${fzf_query:\$i:2} == '--' ]] && let flag=1,len=0,i+=2 
-#   else
-#     let len++,i++
-#   fi
-#   # echo i:\${i} fzf:\${#fzf_query} len:\${len} flag:\${flag} >> ~/all.log
-# done
-# if [[ len -gt 0 ]]; then
-#   if [[ flag -eq 0 ]]; then
-#     search_str+=\"\${search_str:+.*}\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-#     echo search_str:\$search_str >> ~/all.log
-#   else
-#     for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
-#     do
-#       iglob_str+=\"'--iglob=\$iglob_entry' \"
-#     done
-#   fi
-# fi
-# echo done:\$search_str >> ~/all.log
-# echo done:\$iglob_str >> ~/all.log
-# echo \"reload:sleep 0.1; $RG_PREFIX \${iglob_str} '\${search_str}' ${DIRECTORES} || true\"
-# "
+    if [[ -n $GIT ]]; then
+        DIRECTORES=($(command git ls-files "${GIT_FLAGS[@]}" "${DIRECTORES[@]}"))
+    elif [[ ${#FD_OPTS[@]} -gt 0 ]];then
+        DIRECTORES=($(command fd "${FD_OPTS[@]}" "${DIRECTORES[@]}"))
+        check_mark "${@:$((g + 1))}"
+    else
+        check_mark "${@:$((g + 1))}"
+    fi
 
+    flag=/tmp/$$
+    file_r="/tmp/rg$$"
+    file_f="/tmp/fzf$$"
+    trap "command rm -f $flag $file_r $file_f" EXIT SIGINT SIGTERM
+    transform_iglob="
+    setopt extended_glob
+    fzf_query=\${\${FZF_QUERY## ##}%% ##}
+    let i=len=flag=0
+    while [[ i -lt \${#fzf_query} ]]; do
+        if [[ \${fzf_query:\$i:${#REGEX_SEPARATE}} == '${REGEX_SEPARATE}' || \${fzf_query:\$i:${#IGLOB_SEPARATE}} == '${IGLOB_SEPARATE}' ]]; then
+            if [[ flag -eq 0 ]]; then
+              append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
+              search_str+=\"\${append_str:+\${search_str:+${CONNECT_REGEX}}}\$append_str\"
+            else
+              for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
+              do
+                  iglob_str+=\"'--iglob=\$iglob_entry' \"
+              done
+            fi
+            [[ \${fzf_query:\$i:${#REGEX_SEPARATE}} == '${REGEX_SEPARATE}' ]] && let flag=0,len=0,i+=${#REGEX_SEPARATE} 
+            [[ \${fzf_query:\$i:${#IGLOB_SEPARATE}} == '${IGLOB_SEPARATE}' ]] && let flag=1,len=0,i+=${#IGLOB_SEPARATE}
+        else
+            let len++,i++
+        fi
+    done
+    if [[ len -gt 0 ]]; then
+        if [[ flag -eq 0 ]]; then
+            append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
+            search_str+=\"\${append_str:+\${search_str:+${CONNECT_REGEX}}}\$append_str\"
+        else
+            for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
+            do
+                iglob_str+=\"'--iglob=\$iglob_entry' \"
+            done
+        fi
+    fi
+    echo \"reload:sleep 0.1;rg ${RG_OPTS[*]} \${iglob_str} '\$search_str' ${DIRECTORES[*]} || true\"
+    "
+    
+    result=$(: | ${fzf_bin:-fzf} --disabled --query "$INITIAL_QUERY" +m \
+        --bind "start:unbind(?)+reload:rg ${RG_OPTS[*]} {q} ${DIRECTORES[*]}" \
+        --bind "change:transform:$transform_iglob" \
+        --bind "ctrl-t:transform:[[ ! \$FZF_PROMPT =~ Rg ]] &&
+            echo \"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:echo \{q} > $file_f; cat $file_r\" ||
+            echo \"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:echo \{q} > $file_r; cat $file_f\"" \
+        --prompt 'Rg> ' \
+        --delimiter : \
+        --header 'CTRL-T: Switch between ripgrep/fzf' \
+        --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}' \
+        --preview-window 'default:right:60%:~1:+{2}+3/2:border-left' \
+        --bind="alt-e:transform:touch $flag; echo accept-non-empty" \
+        --bind 'enter:accept')
 
-# 1. 相对于第一种，-- iglob通配符表达式不仅可以放到末尾，也可以放到开头解析。
-#   如果放到开头，需要以&来声明正则表达式
+    if [[ -n "$result" ]]; then
+        file_path=$(echo "$result" | awk -F: '{print $1}')
+        line_number=$(echo "$result" | awk -F: '{print $2}')
+        if [[ -e $flag ]]; then
+            fzf-tmux-menu $(realpath $file_path) +$line_number
+        else
+            ${EDITOR} $file_path +$line_number
+        fi
+    fi
+}
 
-# TRANSFORM_IGLOB="
-# setopt extended_glob
-# fzf_query=\${\${FZF_QUERY## ##}%% ##}
-# if [[ \${fzf_query} =~ \"^[^ ].*--\" ]]; then
-#   for iglob_entry in \${(s/ /)\${fzf_query##*--}}
-#   do
-#     iglob_str+=\"'--iglob=\$iglob_entry' \"
-#   done
-#   search_str=\"\${\${fzf_query%--*}%% ##}\"
-#   echo \$iglob_str > ~/1.log
-#   echo \$search_str >> ~/1.log
-# elif [[ \${fzf_query} =~ \"^--\" ]]; then
-#   for iglob_entry in \${(s/ /)\${\${fzf_query%%|*}#--}}
-#   do
-#     iglob_str+=\"'--iglob=\$iglob_entry' \"
-#   done
-#   [[ ! \${fzf_query} =~ \"\|\" ]] && search_str='' || 
-#     search_str=\"\${\${fzf_query#*|}## ##}\"
-#   echo \$iglob_str > ~/2.log
-#   echo \$search_str >> ~/2.log
-# else
-#   search_str=\"\${fzf_query}\"
-# fi
-# echo \"reload:sleep 0.1; $RG_PREFIX \${iglob_str} '\${search_str}' ${DIRECTORES} || true\"
-# "
-
-# 1. 增加了在末尾使用 -- 定义 iglob通配符表达式
-
-# TRANSFORM_IGLOB="
-# if [[ \${FZF_QUERY} =~ \"[ ]?--\" ]]; then
-#   setopt extended_glob
-#   echo \${FZF_QUERY%--*} > ~/1.log
-#   echo \${FZF_QUERY##*--} >> ~/1.log
-#   for iglob_entry in \${(s/ /)\${FZF_QUERY##*--}}
-#   do
-#     iglob_str+=\"'--iglob=\$iglob_entry' \"
-#   done
-#   search_str=\"\${FZF_QUERY% ##--*}\"
-#   echo \$iglob_str >> ~/iglob.log
-# else
-#   search_str=\"\${FZF_QUERY}\"
-# fi
-# echo \$search_str \$#search_str > 1.log
-# echo \$iglob_str >> 1.log
-# echo \$search_str >> ~/3.log
-# echo {q} >> ~/2.log
-# test_iglob=\"'--iglob=*fd*' '--iglob=*rg*'\"
-#
-# echo \"reload:sleep 0.1; $RG_PREFIX \${iglob_str} '\${search_str}' ${DIRECTORES} || true\"
-# "
+main "$@"
