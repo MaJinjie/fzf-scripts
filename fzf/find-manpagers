@@ -1,7 +1,7 @@
 #!/bin/env bash
 
 main() {
-    [[ -v TMUX && $TMUX_SESSION != "manpager" ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+    [[ -v TMUX && $(command -v fzf-tmux) && $TMUX_SESSION != "manpager" ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     typeset result
 

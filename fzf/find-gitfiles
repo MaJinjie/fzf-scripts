@@ -94,7 +94,7 @@ main() {
     done
     shift $((OPTIND - 1))
 
-    [[ -v TMUX && $# -eq 0 ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+    [[ -v TMUX && $(command -v fzf-tmux) && $# -eq 0 ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     # 得到files
     fzf_search "$@"

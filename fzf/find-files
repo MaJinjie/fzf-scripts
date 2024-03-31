@@ -126,7 +126,7 @@ exec_action() {
 
 main() {
     [[ $# -gt 0 && "$1" == help ]] && help
-    [[ -v TMUX ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+    [[ -v TMUX && $(command -v fzf-tmux) ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     # global
     typeset -A marks_map

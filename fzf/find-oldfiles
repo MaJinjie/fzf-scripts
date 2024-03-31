@@ -52,7 +52,7 @@ exec_action() {
 
 main() {
     # 调用nvim命令将最近打开的文件读入到$oldfiles中
-    [[ -v TMUX && $# -eq 0 ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+    [[ -v TMUX && $(command -v fzf-tmux) && $# -eq 0 ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     typeset filterfiles action files
 
