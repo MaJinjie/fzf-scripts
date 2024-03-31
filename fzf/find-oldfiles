@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+# Desc: open most recently viewed files in nvim with fzf
+
+get_oldfiles() {
+    [[ -z "$oldfiles" ]] && oldfiles="/tmp/nv-oldfiles.tmp"
+    [[ -z "${filterfiles}" ]] && filterfiles="/tmp/nv-filterfiles.tmp"
+
+    nvim --headless -c "call append(0, v:oldfiles)" \
+        -c "write! $oldfiles" \
+        -c exit 1> /dev/null 2>&1
+
+    [[ -e ${filterfiles} ]] && truncate --size 0 ${filterfiles}
+    while read -r file; do
+
+        if [[ -e ${file} && -r ${file} && ! ${file} =~ ^/tmp ]]; then
+            echo "${file}" >> ${filterfiles}
+        fi
+    done < "${oldfiles}"
+}
+fzf_search() {
+    action=/tmp/$$
+    [[ -e $action ]] && exit 1
+    trap "command rm -f $action" EXIT SIGINT SIGTERM
+    readarray -t files < <(
+        cat "${filterfiles}" | lscolors | ${fzf_bin:-fzf} \
+            --prompt="Oldfiles> " ${*:+--filter} ${*:-} \
+            --scheme history --exact --tiebreak "end,chunk,index" \
+            --select-1 --exit-0 --header-first \
+            --header "keybindings: C-x(cp base), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
+            --bind='ctrl-x:transform-query:echo $(dirname {})/' \
+            --bind="ctrl-s:transform:echo h > $action; echo accept" \
+            --bind="ctrl-v:transform:echo v > $action; echo accept" \
+            --bind="alt-e:transform:echo m  > $action; echo accept" \
+            --bind="enter:accept-or-print-query" | sed -n "${*:+1}p"
+    )
+}
+
+exec_action() {
+    flag=$(command cat "$action" 2> /dev/null)
+
+    mkdir -p "$(dirname "${files}")" &> /dev/null
+    if [[ "${flag}" =~ ^(h|v)$ ]]; then
+        tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
+    elif [[ "${flag}" == m ]]; then
+        fzf-tmux-menu "${files[*]}"
+    else
+        ${EDITOR} "${files[@]}"
+
+    fi
+}
+
+main() {
+    # 调用nvim命令将最近打开的文件读入到$oldfiles中
+    [[ -v TMUX && $# -eq 0 ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+
+    typeset filterfiles action files
+
+    get_oldfiles
+
+    if [[ $# -eq 1 && $1 == - ]]; then
+        files=$(sed -n '1p' "${filterfiles}")
+    else
+        fzf_search "$@"
+    fi
+
+    [[ ${#files[@]} -gt 0 ]] && exec_action
+}
+
+main "$@"
+
+# fzf_search() {
+#     action=/tmp/$$
+#     [[ -e $action ]] && exit 1
+#     trap "command rm -f $action" EXIT SIGINT SIGTERM
+#     readarray -t files < <(
+#         ${fzf_bin:-fzf} \
+#             --query "${*}" --prompt="Oldfiles> " \
+#             --scheme history --exact --tiebreak "end,chunk,index" \
+#             --select-1 --exit-0 --header-first \
+#             --header "keybindings: C-x(cp base), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
+#             --bind='ctrl-x:transform-query:echo $(dirname {})/' \
+#             --bind="ctrl-s:transform:echo h > $action; echo accept" \
+#             --bind="ctrl-v:transform:echo v > $action; echo accept" \
+#             --bind="alt-e:transform:echo m  > $action; echo accept" \
+#             --bind="enter:accept-or-print-query" \
+#             < <(cat "${filterfiles}" | lscolors)
+#     )
+# }

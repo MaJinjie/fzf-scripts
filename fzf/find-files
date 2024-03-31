@@ -1,0 +1,205 @@
+#!/bin/env bash
+
+help() {
+    >&2 echo 'usage: ff [OPTIONS] [DIRECTORES] [--] [DIRECTORY MARKS]
+
+    OPTIONS:
+        -t char set, file types dfxlspebc
+        -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
+        -D int, max-depth
+        -h bool, cancel --hidden
+        -n bool, --no-ignore
+        -q string, init_query
+
+        --
+        add marks ...
+    KEYBINDINGS:
+        ctrl-s horizontal direction splitw
+        ctrl-v vertical direction splitw
+        ctrl-x transform-query:echo $(dirname {})/ 
+        alt-e fzf-tmux-menu splitw
+    '
+    exit
+}
+
+add_regular_directores() {
+    for arg in "$@"; do
+        if [[ -d "$arg" ]]; then
+            directores+=("$arg")
+        else
+            echo "$arg not a directory"
+            exit 1
+        fi
+    done
+
+}
+parse_directory_mark() {
+    typeset -ga match_dirs
+    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-$CUSTOM/directores.toml}"
+    if [[ ! -e ${marks_file} ]]; then
+        echo "marks_file is not a file"
+        exit 1
+    fi
+
+    [[ -z ${start_ln} ]] && start_ln=$(awk '/^\[marks\]$/{ln=NR+1}END{if(!ln) ln=0; print ln}' "${marks_file}")
+    [[ -z ${end_ln} ]] && end_ln=$(awk -v start_ln="${start_ln}" \
+        '!ln&&NR>=start_ln&&/^\[.*\]$/{ln=NR-1}END{if(!ln) ln=NR; print ln}' "${marks_file}")
+
+    if [[ ${start_ln} -eq 0 || ${start_ln} -gt ${end_ln} ]]; then
+        echo "${*} mark is not exists"
+        return 1
+    fi
+
+    match_dirs=$(sed -n "${start_ln},${end_ln}p" "${marks_file}" | awk -v mark=1 "arr_flag||/^${*}/"'{
+        if(/\[$/) {
+            printf("%s", $0)
+            arr_flag=1
+        } else if (/^\]$/) {
+            printf("]")
+            arr_flag=0
+        } else {
+            printf("%s", $0)
+        }
+    }' | sed -r 's/^.+ = (.+)$/\1/' | tr -d '[]')
+
+    IFS=','
+    read -ra match_dirs < <(eval "echo ${match_dirs[*]}")
+    unset IFS
+
+    if [[ ${#match_dirs[@]} -eq 0 ]]; then
+        echo "mark is empty or parse error"
+        exit 1
+    fi
+
+    return 0
+
+}
+add_mark_directores() {
+    for arg in "$@"; do
+        if parse_directory_mark "$arg"; then
+            for directory in "${match_dirs[@]}"; do
+                if [[ "$directory" == ${PWD}* ]]; then
+                    directores+=("$(realpath --no-symlinks --relative-to=${PWD} $directory)")
+                else
+                    directores+=("$directory")
+                fi
+            done
+        else
+            echo "$arg not a mark"
+            exit 1
+        fi
+    done
+    set +x
+
+}
+
+fzf_search() {
+    action=/tmp/$$
+    [[ -e $action ]] && exit 1
+    trap "command rm -f $action" EXIT SIGINT SIGTERM
+    readarray -t files < <(
+        $fd_prefix | ${fzf_bin:-fzf} \
+            --query "$init_query" --prompt 'Files> ' \
+            --scheme path --exact --tiebreak "end,chunk,index" \
+            --header-first --header "keybindings: C-x(cp), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
+            --bind='ctrl-x:transform-query:echo $(dirname {})/' \
+            --bind="ctrl-s:transform:echo h > $action; echo accept" \
+            --bind="ctrl-v:transform:echo v > $action; echo accept" \
+            --bind="alt-e:transform:echo m > $action; echo accept" \
+            --bind="enter:accept-or-print-query"
+    )
+}
+
+exec_action() {
+    flag=$(command cat "$action" 2> /dev/null)
+
+    mkdir -p "$(dirname "${files}")" &> /dev/null
+    if [[ "${flag}" =~ ^(h|v)$ ]]; then
+        tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
+    elif [[ "${flag}" == m ]]; then
+        fzf-tmux-menu "${files[*]}"
+    else
+        ${EDITOR} "${files[@]}"
+    fi
+}
+
+main() {
+    [[ $# -gt 0 && "$1" == help ]] && help
+    [[ -v TMUX ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+
+    # global
+    typeset -A marks_map
+    typeset -a directores files
+    typeset action fd_prefix
+
+    # args
+    typeset -a types left_args right_args
+    typeset changed_time no_ignore max_depth=8 hidden=true
+
+    ((i = 1))
+    while [[ i -le $# && "${!i}" != "--" ]]; do
+        left_args+=("${!i}")
+        ((i++))
+    done
+    right_args=("${@:$((i + 1))}")
+
+    args=$(getopt -o hnD:t:T:q: -n "$0" -- "${left_args[@]}")
+    if [[ $? != 0 ]]; then
+        echo "getopt parse error"
+        exit 1
+    fi
+    eval set -- "$args"
+
+    while true; do
+        case "$1" in
+        -t)
+            ((i = 0))
+            while [[ $i -lt ${#2} ]]; do
+                ((i++))
+                types+=("-t$(echo ${2} | cut -c $i)")
+            done
+            shift 2
+            ;;
+        -T)
+            changed_time="--changed-after=$2"
+            shift 2
+            ;;
+        -h)
+            unset hidden
+            shift
+            ;;
+        -n)
+            no_ignore="--no-ignore"
+            shift
+            ;;
+        -D)
+            max_depth=$2
+            shift 2
+            ;;
+        -q)
+            init_query=$2
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        ?)
+            echo "args error"
+            exit 1
+            ;;
+        esac
+    done
+
+    [[ $# -gt 0 ]] && add_regular_directores "$@"
+    [[ ${#right_args} -gt 0 ]] && add_mark_directores "${right_args[@]}"
+
+    fd_prefix="command fd --color=always --follow --max-depth=${max_depth} \
+        ${hidden:+--hidden} ${no_ignore:+--no-ignore} ${changed_time} \
+        ${types[*]--tf} ${directores[*]:+^} ${directores[*]}"
+
+    fzf_search
+
+    [[ ${#files[@]} -gt 0 ]] && exec_action
+}
+main "$@"

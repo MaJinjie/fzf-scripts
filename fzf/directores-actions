@@ -1,0 +1,63 @@
+#!/bin/env bash
+
+help() {
+    >&2 echo '
+    usage: command [- | init-query]
+
+    OPTIONS:
+    '
+    exit
+}
+
+zoxide_directores() {
+    action=/tmp/$$
+    [[ -e $action ]] && exit 1
+    trap "command rm -f $action" EXIT SIGINT SIGTERM
+    readarray -t directores < <(
+        zoxide query --list | lscolors |
+            ${fzf_bin:-fzf} \
+                --query "${*}" --prompt "Zoxide> " \
+                --exit-0 --header-first \
+                --exact --scheme history --tiebreak "end,chunk,index" \
+                --header "keybindings: C-x(cp), C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
+                --bind='ctrl-x:transform-query:echo {}/' \
+                --bind="ctrl-f:transform:echo f > $action; echo accept" \
+                --bind="ctrl-g:transform:echo g > $action; echo accept" \
+                --bind="ctrl-s:transform:echo h > $action; echo accept" \
+                --bind="ctrl-v:transform:echo v > $action; echo accept" \
+                --bind="alt-e:transform:echo  m > $action; echo accept" \
+                --bind="enter:accept-or-print-query"
+    )
+}
+
+exec_action() {
+    flag=$(command cat "$action" 2> /dev/null)
+
+    if [[ "f" == "$flag" ]]; then
+        ./find-files "${directores[@]}"
+    elif [[ "g" == "$flag" ]]; then
+        ./search-string "${directores[@]}"
+    else
+        mkdir -p "$(dirname "${directores}")" &> /dev/null
+        if [[ "${flag}" =~ ^(h|v)$ ]]; then
+            tmux splitw "-b${flag}" zsh -c "${EDITOR} ${directores}"
+        elif [[ "${flag}" == m ]]; then
+            fzf-tmux-menu "${directores}"
+        else
+            ${EDITOR} "${directores}"
+
+        fi
+    fi
+}
+
+main() {
+    [[ -v TMUX ]] && fzf_bin="fzf-tmux ${FZF_TMUX_OPTS}"
+
+    typeset directores action
+
+    zoxide_directores "$@"
+
+    [[ ${#directores[@]} -gt 0 ]] && exec_action
+}
+
+main "$@"

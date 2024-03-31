@@ -1,0 +1,20 @@
+#!/bin/env bash
+
+main() {
+    [[ -v TMUX && $TMUX_SESSION != "manpager" ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+
+    typeset result
+
+    result=$(
+        man -k . | ${fzf_bin:-fzf} +m \
+            --prompt "Man> " --query "${*}" \
+            --exact --tiebreak "begin" |
+            awk '{print $1}'
+    )
+    [[ -n $result ]] && {
+        # 传给man，将内容使用nvim的man文件类型显示。
+        echo "$result" | xargs -o man | nvim -c 'Man!'
+    }
+}
+
+main "$@"

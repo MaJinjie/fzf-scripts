@@ -1,0 +1,105 @@
+#!/bin/env bash
+
+help() {
+    >&2 echo 'usage: fg [OPTIONS] [init_query]
+
+    OPTIONS:
+        -m + --modified
+        -d + --deleted
+        -s + --stage
+        -k + --killed
+        -o + --others
+        -i + --ignored
+    '
+    exit
+}
+
+fzf_search() {
+    if ! cd "$(git rev-parse --show-toplevel)" &> /dev/null; then
+        echo "git not exists"
+        exit 1
+    fi
+
+    action=/tmp/$$
+    [[ -e $action ]] && exit 1
+    trap "command rm -f $action" EXIT SIGINT SIGTERM
+    readarray -t files < <(
+        git ls-files --with-tree=HEAD "${git_flags[@]}" | lscolors | ${fzf_bin:-fzf} \
+            --prompt="Gitfiles> " ${*:+--filter} ${*:-} \
+            --scheme path --exact --tiebreak "end,chunk,index" \
+            --exit-0 --header-first \
+            --header "keybindings: C-x(cp base), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
+            --bind='ctrl-x:transform-query:echo $(dirname {})/' \
+            --bind="ctrl-s:transform:echo h > $action; echo accept" \
+            --bind="ctrl-v:transform:echo v > $action; echo accept" \
+            --bind="alt-e:transform:echo m  > $action; echo accept" \
+            --bind="enter:accept-or-print-query" | sed -n "${*:+1}p"
+    )
+
+}
+
+exec_action() {
+    flag=$(command cat "$action" 2> /dev/null)
+
+    mkdir -p "$(dirname "${files}")" &> /dev/null
+    if [[ "${flag}" =~ ^(h|v)$ ]]; then
+        tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
+    elif [[ "${flag}" == m ]]; then
+        fzf-tmux-menu "${files[*]}"
+    else
+        ${EDITOR} "${files[@]}"
+
+    fi
+}
+
+main() {
+    [[ $# -gt 1 && "$1" == help ]] && help
+
+    # 判断是否是一个git目录
+    if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+        echo "this is not a git directory"
+        exit 1
+    fi
+    # global
+    typeset files action
+
+    # args
+    typeset -a git_flags
+    while getopts "mdksio" opt; do
+        case $opt in
+        m)
+            git_flags+=("--modified")
+            ;;
+        d)
+            git_flags+=("--deleted")
+            ;;
+        s)
+            git_flags+=("--stage")
+            ;;
+        k)
+            git_flags+=("--killed")
+            ;;
+        i)
+            git_flags+=("--ignored")
+            ;;
+        o)
+            git_flags+=("--others")
+            ;;
+        *)
+            echo "flag error"
+            exit 1
+            ;;
+
+        esac
+    done
+    shift $((OPTIND - 1))
+
+    [[ -v TMUX && $# -eq 0 ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+
+    # 得到files
+    fzf_search "$@"
+
+    [[ ${#files[@]} -gt 0 ]] && exec_action
+}
+
+main "$@"
