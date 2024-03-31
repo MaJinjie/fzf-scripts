@@ -13,7 +13,7 @@ main() {
     )
     [[ -n $result ]] && {
         # 传给man，将内容使用nvim的man文件类型显示。
-        echo "$result" | xargs -o man | nvim -c 'Man!'
+        echo "$result" | xargs -o man | ${EDITOR} -c 'Man!'
     }
 }
 

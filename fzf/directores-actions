@@ -2,7 +2,7 @@
 
 help() {
     >&2 echo '
-    usage: command [- | init-query]
+    usage: command
 
     OPTIONS:
     '

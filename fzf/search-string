@@ -57,7 +57,11 @@ define_env() {
         else
             for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
             do
-                iglob_str+=\"'--iglob=\$iglob_entry' \"
+                case \$iglob_entry in 
+                *)
+                    iglob_str+=\"'--iglob=\$iglob_entry' \"
+                    ;;
+                esac
             done
         fi
     fi
@@ -79,7 +83,7 @@ add_regular_directores() {
 
 parse_directory_mark() {
     typeset -ga match_dirs
-    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-$CUSTOM/directores.toml}"
+    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${CUSTOM:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}/directores.toml}"
     if [[ ! -e ${marks_file} ]]; then
         echo "marks_file is not a file"
         exit 1

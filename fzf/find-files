@@ -33,9 +33,10 @@ add_regular_directores() {
     done
 
 }
+
 parse_directory_mark() {
     typeset -ga match_dirs
-    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-$CUSTOM/directores.toml}"
+    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${CUSTOM:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}/directores.toml}"
     if [[ ! -e ${marks_file} ]]; then
         echo "marks_file is not a file"
         exit 1
