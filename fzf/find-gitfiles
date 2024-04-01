@@ -19,21 +19,21 @@ fzf_search() {
         echo "git not exists"
         exit 1
     fi
+    [[ $# -gt 0 ]] && filter_query="${*}"
 
     action=/tmp/$$
     [[ -e $action ]] && exit 1
     trap "command rm -f $action" EXIT SIGINT SIGTERM
     readarray -t files < <(
         git ls-files --with-tree=HEAD "${git_flags[@]}" | lscolors | ${fzf_bin:-fzf} \
-            --prompt="Gitfiles> " ${*:+--filter} ${*:-} \
+            --prompt="Gitfiles> " ${filter_query:+--filter "${filter_query}"} \
             --scheme path --exact --tiebreak "end,chunk,index" \
             --exit-0 --header-first \
-            --header "keybindings: C-x(cp base), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
-            --bind='ctrl-x:transform-query:echo $(dirname {})/' \
+            --header "keybindings: C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
             --bind="ctrl-v:transform:echo v > $action; echo accept" \
             --bind="alt-e:transform:echo m  > $action; echo accept" \
-            --bind="enter:accept-or-print-query" | sed -n "${*:+1}p"
+            --bind="enter:accept-or-print-query" | sed -n "${filter_query:+1}p"
     )
 
 }
@@ -45,7 +45,7 @@ exec_action() {
     if [[ "${flag}" =~ ^(h|v)$ ]]; then
         tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
     elif [[ "${flag}" == m ]]; then
-        fzf-tmux-menu "${files[*]}"
+        $CUSTOM_HOME/scripts/tmux/tmux-menu "${files[*]}"
     else
         ${EDITOR} "${files[@]}"
 

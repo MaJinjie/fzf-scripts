@@ -83,9 +83,9 @@ add_regular_directores() {
 
 parse_directory_mark() {
     typeset -ga match_dirs
-    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${CUSTOM:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}/directores.toml}"
+    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom/directores.toml}"
     if [[ ! -e ${marks_file} ]]; then
-        echo "marks_file is not a file"
+        echo "${marks_file} is not a file"
         exit 1
     fi
 
@@ -181,7 +181,7 @@ exec_action() {
     if [[ "${flag}" =~ ^(h|v)$ ]]; then
         tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files}"
     elif [[ "${flag}" == m ]]; then
-        fzf-tmux-menu ${files}
+        $CUSTOM_HOME/scripts/tmux/tmux-menu ${files}
     else
         ${EDITOR} ${files}
     fi

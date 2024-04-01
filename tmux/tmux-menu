@@ -1,0 +1,34 @@
+#!/bin/env bash
+
+main() {
+    if [[ ! -v TMUX ]]; then
+        echo "tmux is not exists"
+        return 1
+    fi
+
+    if [[ $# -gt 0 ]]; then
+        for arg in "$@"; do
+            if [[ -e $arg ]]; then
+                args+=("$(realpath $arg)")
+            else
+                args+=("$arg")
+            fi
+        done
+        # echo "${#args[@]}"
+        # echo "${args[@]}"
+
+    fi
+
+    tmux display-menu -T "Choose direction" \
+        "left" h "splitw -bh zsh -c \"${EDITOR} ${args[*]}\"" \
+        "right" r "splitw -h zsh -c \"${EDITOR} ${args[*]}\"" \
+        "top" k "splitw -bv zsh -c \"${EDITOR} ${args[*]}\"" \
+        "bottom" j "splitw -v zsh -c \"${EDITOR} ${args[*]}\"" \
+        "left full" H "splitw -fbh zsh -c \"${EDITOR} ${args[*]}\"" \
+        "right full" L "splitw -fh zsh -c \"${EDITOR} ${args[*]}\"" \
+        "top full" K "splitw -fbv zsh -c \"${EDITOR} ${args[*]}\"" \
+        "bottom full" J "splitw -fv zsh -c \"${EDITOR} ${args[*]}\"" \
+        "new window" w "neww zsh -c \"${EDITOR} ${args[*]}\"" || return 1
+}
+
+main "$@"

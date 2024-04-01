@@ -36,9 +36,9 @@ add_regular_directores() {
 
 parse_directory_mark() {
     typeset -ga match_dirs
-    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${CUSTOM:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}/directores.toml}"
+    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom/directores.toml}"
     if [[ ! -e ${marks_file} ]]; then
-        echo "marks_file is not a file"
+        echo "${marks_file} is not a file"
         exit 1
     fi
 
@@ -102,8 +102,7 @@ fzf_search() {
         $fd_prefix | ${fzf_bin:-fzf} \
             --query "$init_query" --prompt 'Files> ' \
             --scheme path --exact --tiebreak "end,chunk,index" \
-            --header-first --header "keybindings: C-x(cp), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
-            --bind='ctrl-x:transform-query:echo $(dirname {})/' \
+            --header-first --header "keybindings:C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
             --bind="ctrl-v:transform:echo v > $action; echo accept" \
             --bind="alt-e:transform:echo m > $action; echo accept" \
@@ -118,7 +117,7 @@ exec_action() {
     if [[ "${flag}" =~ ^(h|v)$ ]]; then
         tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
     elif [[ "${flag}" == m ]]; then
-        fzf-tmux-menu "${files[*]}"
+        $CUSTOM_HOME/scripts/tmux/tmux-menu "${files[*]}"
     else
         ${EDITOR} "${files[@]}"
     fi

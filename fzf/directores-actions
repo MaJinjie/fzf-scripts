@@ -19,8 +19,7 @@ zoxide_directores() {
                 --query "${*}" --prompt "Zoxide> " \
                 --exit-0 --header-first \
                 --exact --scheme history --tiebreak "end,chunk,index" \
-                --header "keybindings: C-x(cp), C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
-                --bind='ctrl-x:transform-query:echo {}/' \
+                --header "keybindings: C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
                 --bind="ctrl-f:transform:echo f > $action; echo accept" \
                 --bind="ctrl-g:transform:echo g > $action; echo accept" \
                 --bind="ctrl-s:transform:echo h > $action; echo accept" \
@@ -34,15 +33,15 @@ exec_action() {
     flag=$(command cat "$action" 2> /dev/null)
 
     if [[ "f" == "$flag" ]]; then
-        ./find-files "${directores[@]}"
+        $CUSTOM_HOME/scripts/fzf/find-files "${directores[@]}"
     elif [[ "g" == "$flag" ]]; then
-        ./search-string "${directores[@]}"
+        $CUSTOM_HOME/scripts/fzf/search-string "${directores[@]}"
     else
         mkdir -p "$(dirname "${directores}")" &> /dev/null
         if [[ "${flag}" =~ ^(h|v)$ ]]; then
             tmux splitw "-b${flag}" zsh -c "${EDITOR} ${directores}"
         elif [[ "${flag}" == m ]]; then
-            fzf-tmux-menu "${directores}"
+            $CUSTOM_HOME/scripts/tmux/tmux-menu "${directores}"
         else
             ${EDITOR} "${directores}"
 
