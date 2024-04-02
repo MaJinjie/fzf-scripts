@@ -6,29 +6,18 @@ main() {
         return 1
     fi
 
-    if [[ $# -gt 0 ]]; then
-        for arg in "$@"; do
-            if [[ -e $arg ]]; then
-                args+=("$(realpath $arg)")
-            else
-                args+=("$arg")
-            fi
-        done
-        # echo "${#args[@]}"
-        # echo "${args[@]}"
-
-    fi
+    [[ $# -eq 0 ]] && return 1
 
     tmux display-menu -T "Choose direction" \
-        "left" h "splitw -bh zsh -c \"${EDITOR} ${args[*]}\"" \
-        "right" r "splitw -h zsh -c \"${EDITOR} ${args[*]}\"" \
-        "top" k "splitw -bv zsh -c \"${EDITOR} ${args[*]}\"" \
-        "bottom" j "splitw -v zsh -c \"${EDITOR} ${args[*]}\"" \
-        "left full" H "splitw -fbh zsh -c \"${EDITOR} ${args[*]}\"" \
-        "right full" L "splitw -fh zsh -c \"${EDITOR} ${args[*]}\"" \
-        "top full" K "splitw -fbv zsh -c \"${EDITOR} ${args[*]}\"" \
-        "bottom full" J "splitw -fv zsh -c \"${EDITOR} ${args[*]}\"" \
-        "new window" w "neww zsh -c \"${EDITOR} ${args[*]}\"" || return 1
+        "left" h "splitw -bh zsh -c \"cd $PWD; ${EDITOR} ${*}\"" \
+        "right" r "splitw -h zsh -c \"${EDITOR} ${*}\"" \
+        "top" k "splitw -bv zsh -c \"${EDITOR} ${*}\"" \
+        "bottom" j "splitw -v zsh -c \"${EDITOR} ${*}\"" \
+        "left full" H "splitw -fbh zsh -c \"${EDITOR} ${*}\"" \
+        "right full" L "splitw -fh zsh -c \"${EDITOR} ${*}\"" \
+        "top full" K "splitw -fbv zsh -c \"${EDITOR} ${*}\"" \
+        "bottom full" J "splitw -fv zsh -c \"${EDITOR} ${*}\"" \
+        "new window" w "neww zsh -c \"${EDITOR} ${*}\"" || return 1
 }
 
 main "$@"

@@ -98,6 +98,9 @@ fzf_search() {
     action=/tmp/$$
     [[ -e $action ]] && exit 1
     trap "command rm -f $action" EXIT SIGINT SIGTERM
+
+    action_e="execute(${EDITOR} {+} > /dev/tty < /dev/tty)"
+
     readarray -t files < <(
         $fd_prefix | ${fzf_bin:-fzf} \
             --query "$init_query" --prompt 'Files> ' \
@@ -105,7 +108,8 @@ fzf_search() {
             --header-first --header "keybindings:C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
             --bind="ctrl-v:transform:echo v > $action; echo accept" \
-            --bind="alt-e:transform:echo m > $action; echo accept" \
+            --bind="ctrl-o:transform:echo m > $action; echo accept" \
+            --bind="alt-e:transform:[[ \"${fzf_bin}\" ]] && echo \"ignore\" || echo \"${action_e}\"" \
             --bind="enter:accept-or-print-query"
     )
 }
@@ -117,7 +121,7 @@ exec_action() {
     if [[ "${flag}" =~ ^(h|v)$ ]]; then
         tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
     elif [[ "${flag}" == m ]]; then
-        $CUSTOM_HOME/scripts/tmux/tmux-menu "${files[*]}"
+        $CUSTOM_HOME/scripts/tmux/tmux-menu $(realpath "${files[@]}")
     else
         ${EDITOR} "${files[@]}"
     fi
@@ -143,7 +147,7 @@ main() {
     done
     right_args=("${@:$((i + 1))}")
 
-    args=$(getopt -o hnD:t:T:q: -n "$0" -- "${left_args[@]}")
+    args=$(getopt -o hnD:t:T:q: -l no-popup -n "$0" -- "${left_args[@]}")
     if [[ $? != 0 ]]; then
         echo "getopt parse error"
         exit 1
@@ -152,6 +156,10 @@ main() {
 
     while true; do
         case "$1" in
+        --no-popup)
+            fzf_bin=
+            shift
+            ;;
         -t)
             ((i = 0))
             while [[ $i -lt ${#2} ]]; do

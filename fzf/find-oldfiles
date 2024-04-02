@@ -24,6 +24,9 @@ fzf_search() {
     action=/tmp/$$
     [[ -e $action ]] && exit 1
     trap "command rm -f $action" EXIT SIGINT SIGTERM
+
+    action_e="execute(${EDITOR} {+} > /dev/tty < /dev/tty)"
+
     readarray -t files < <(
         cat "${filterfiles}" | lscolors | ${fzf_bin:-fzf} \
             --prompt="Oldfiles> " ${filter_query:+--filter "${filter_query}"} \
@@ -32,7 +35,8 @@ fzf_search() {
             --header "keybindings: C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
             --bind="ctrl-v:transform:echo v > $action; echo accept" \
-            --bind="alt-e:transform:echo m  > $action; echo accept" \
+            --bind="ctrl-o:transform:echo m > $action; echo accept" \
+            --bind="alt-e:transform:[[ \"${fzf_bin}\" ]] && echo \"ignore\" || echo \"${action_e}\"" \
             --bind="enter:accept-or-print-query" | sed -n "${filter_query:+1}p"
     )
 }
@@ -57,11 +61,39 @@ main() {
 
     typeset filterfiles action files
 
+    typeset args
+
+    args=$(getopt -o z -l no-popup -n "$0" -- "$@")
+    if [[ "$?" -ne 0 ]]; then
+        echo "getopt parse error, args:${*}"
+        exit 1
+    fi
+    eval set -- "$args"
+
+    while true; do
+        case $1 in
+        --no-popup)
+            fzf_bin=
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "flag error"
+            exit 1
+            ;;
+
+        esac
+    done
+
     get_oldfiles
 
     if [[ $# -eq 1 && $1 == - ]]; then
         files=$(sed -n '1p' "${filterfiles}")
     else
+        [[ $# -gt 0 && ${fzf_bin} ]] && fzf_bin=
         fzf_search "$@"
     fi
 
@@ -69,22 +101,3 @@ main() {
 }
 
 main "$@"
-
-# fzf_search() {
-#     action=/tmp/$$
-#     [[ -e $action ]] && exit 1
-#     trap "command rm -f $action" EXIT SIGINT SIGTERM
-#     readarray -t files < <(
-#         ${fzf_bin:-fzf} \
-#             --query "${*}" --prompt="Oldfiles> " \
-#             --scheme history --exact --tiebreak "end,chunk,index" \
-#             --select-1 --exit-0 --header-first \
-#             --header "keybindings: C-x(cp base), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
-#             --bind='ctrl-x:transform-query:echo $(dirname {})/' \
-#             --bind="ctrl-s:transform:echo h > $action; echo accept" \
-#             --bind="ctrl-v:transform:echo v > $action; echo accept" \
-#             --bind="alt-e:transform:echo m  > $action; echo accept" \
-#             --bind="enter:accept-or-print-query" \
-#             < <(cat "${filterfiles}" | lscolors)
-#     )
-# }

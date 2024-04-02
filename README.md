@@ -5,6 +5,57 @@
 5. ss ./fzf/search-string 搜索文本
 6. ja ./fzf/directores-actions 选择directores + actions
 
+# install
+
+`git clone https://github.com/MaJinjie/fzf-scripts.git $CUSTOM_HOME/scripts`
+
+# usage
+
+## 1 aliases
+
+```bash
+alias fm="$CUSTOM_HOME/scripts/fzf/find-manpagers"
+alias fo="$CUSTOM_HOME/scripts/fzf/find-oldfiles"
+alias ff="$CUSTOM_HOME/scripts/fzf/find-files"
+alias fg="$CUSTOM_HOME/scripts/fzf/find-gitfiles"
+alias ja="$CUSTOM_HOME/scripts/fzf/directores-actions"
+alias ss="$CUSTOM_HOME/scripts/fzf/search-string"
+
+```
+
+**or**
+
+```zsh
+typeset -A fd rg
+exec_aliases() {
+    for exec_name ("$@") {
+        if [[ ${+commands[$exec_name]} ]] {
+            for k v (${(kvP)exec_name}) {
+                aliases[${k}]=$v
+            }
+        }
+    }
+}
+
+fd=(
+    fm "$CUSTOM_HOME/scripts/fzf/find-manpagers"
+    fo "$CUSTOM_HOME/scripts/fzf/find-oldfiles"
+    ff "$CUSTOM_HOME/scripts/fzf/find-files"
+    fg "$CUSTOM_HOME/scripts/fzf/find-gitfiles"
+    ja "$CUSTOM_HOME/scripts/fzf/directores-actions"
+)
+
+rg=(
+    ss "$CUSTOM_HOME/scripts/fzf/search-string"
+)
+
+exec_aliases "fd" "rg"
+```
+
+## 2 PATH
+
+add to env PATH
+
 # fzf
 
 ## 1 find-manpagers
@@ -62,7 +113,9 @@ fo zsh # open  /home/mjj/dotfiles/.config/zsh/.zshenv
 tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
 ```
 
-- `A-e` 使用tmux菜单打开文件
+- `C-o` 使用tmux菜单打开文件
+
+- `A-e` 在非fzf-tmux时使用`execute`打开
 
 ## find-gitfiles
 
@@ -300,7 +353,7 @@ $FZF_COLORS \
 --bind='ctrl-/:change-preview-window(up,60%,border-horizontal|right,60%,border-vertical)' \
 --bind='ctrl-\:toggle-preview' \
 --bind='ctrl-q:abort' \
---bind='ctrl-c:clear-selection' \
+--bind='ctrl-l:clear-selection+first' \
 --bind='ctrl-j:down' \
 --bind='ctrl-k:up' \
 --bind='ctrl-x:replace-query' \
@@ -325,4 +378,4 @@ export FZF_TMUX_OPTS="-p70%,80%"
 
 ## 其他
 
-1. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors。
+1. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。

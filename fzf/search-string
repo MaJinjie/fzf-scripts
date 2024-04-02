@@ -154,10 +154,11 @@ fzf_search() {
     file_f="/tmp/fzf$$"
     trap "command rm -f ${action} ${file_f} ${file_r}" EXIT SIGINT SIGTERM
 
+    action_e="execute(${EDITOR} {1} +{2} > /dev/tty < /dev/tty)"
+
     readarray -t files < <(
-        ${fzf_bin:-fzf} +m --disabled \
+        ${fzf_bin:-fzf} --disabled \
             --query "$init_query" --prompt "Rg> " \
-            --exit-0 \
             --exact \
             --bind "start:unbind(?)+reload:${rg_prefix} {q} ${directores[*]}" \
             --bind "change:transform:$transform_iglob" \
@@ -170,7 +171,8 @@ fzf_search() {
             --preview-window 'default:right:60%:~1:+{2}+3/2:border-left' \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
             --bind="ctrl-v:transform:echo v > $action; echo accept" \
-            --bind="alt-e:transform:echo m > $action; echo accept" \
+            --bind="ctrl-o:transform:echo m > $action; echo accept" \
+            --bind="alt-e:transform:[[ \"${fzf_bin}\" ]] && echo \"ignore\" || echo \"${action_e}\"" \
             --bind="enter:accept" | awk 'BEGIN{FS=":"}{printf("%s +%s\n", $1, $2)}'
     )
 }
@@ -181,6 +183,12 @@ exec_action() {
     if [[ "${flag}" =~ ^(h|v)$ ]]; then
         tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files}"
     elif [[ "${flag}" == m ]]; then
+        ((i = 0))
+        while [[ $i -lt ${#files[@]} ]]; do
+            read -r file_path file_line <<< "${files[$i]}"
+            files[$i]="$(realpath ${file_path}) ${file_line}"
+            ((i++))
+        done
         $CUSTOM_HOME/scripts/tmux/tmux-menu ${files}
     else
         ${EDITOR} ${files}
@@ -206,7 +214,7 @@ main() {
     done
     right_args=("${@:$((i + 1))}")
 
-    args=$(getopt -o hnD:t:q: -n "$0" -- "${left_args[@]}")
+    args=$(getopt -o hnD:t:q: -l no-popup -n "$0" -- "${left_args[@]}")
     if [[ $? != 0 ]]; then
         echo "getopt parse error"
         exit 1
@@ -215,6 +223,10 @@ main() {
 
     while true; do
         case "$1" in
+        --no-popup)
+            fzf_bin=
+            shift
+            ;;
         -q)
             init_query="$2"
             shift 2
