@@ -51,8 +51,7 @@ exec_action() {
         elif [[ "${flag}" == m ]]; then
             $CUSTOM_HOME/scripts/tmux/tmux-menu $(realpath "${directores}")
         else
-            echo "${directores[@]}"
-            ${EDITOR} ""
+            ${EDITOR} "${directores}"
 
         fi
     fi

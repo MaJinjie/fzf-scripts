@@ -90,8 +90,6 @@ add_mark_directores() {
             exit 1
         fi
     done
-    set +x
-
 }
 
 fzf_search() {

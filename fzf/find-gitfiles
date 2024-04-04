@@ -28,7 +28,7 @@ fzf_search() {
     action_e="execute(${EDITOR} {+} > /dev/tty < /dev/tty)"
 
     readarray -t files < <(
-        git ls-files --with-tree=HEAD "${git_flags[@]}" | lscolors | ${fzf_bin:-fzf} \
+        $git_prefix | lscolors | ${fzf_bin:-fzf} \
             --prompt="Gitfiles> " ${filter_query:+--filter "${filter_query}"} \
             --scheme path --exact --tiebreak "end,chunk,index" \
             --exit-0 --header-first \
@@ -67,7 +67,7 @@ main() {
         exit 1
     fi
     # global
-    typeset files action
+    typeset files action git_prefix
 
     # args
     typeset -a git_flags
@@ -123,6 +123,8 @@ main() {
     done
 
     [[ $# -gt 0 && ${fzf_bin} ]] && fzf_bin=
+
+    git_prefix="git ls-files --with-tree=HEAD ${git_flags[*]}"
 
     # 得到files
     fzf_search "$@"
