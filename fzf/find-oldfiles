@@ -32,7 +32,7 @@ fzf_search() {
             --prompt="Oldfiles> " ${filter_query:+--filter "${filter_query}"} \
             --scheme history --exact --tiebreak "end,chunk,index" \
             --select-1 --exit-0 --header-first \
-            --header "keybindings: C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
+            --header "keybindings: C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
             --bind="ctrl-v:transform:echo v > $action; echo accept" \
             --bind="ctrl-o:transform:echo m > $action; echo accept" \

@@ -20,13 +20,13 @@ zoxide_directores() {
     action_st="transform:echo g > $action; echo accept"
     action_e="execute(${EDITOR} {+} > /dev/tty < /dev/tty)"
 
-    readarray -t directores < <(
+    readarray -t directories < <(
         zoxide query --list | lscolors |
             ${fzf_bin:-fzf} \
                 --query "${*}" --prompt "Zoxide> " \
                 --exit-0 --header-first \
                 --exact --scheme history --tiebreak "end,chunk,index" \
-                --header "keybindings: C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu), Enter(select or new file)" \
+                --header "keybindings: C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
                 --bind="ctrl-f:transform:[ \"${fzf_bin}\" ] && echo \"$action_ft\" || echo \"$action_ff\"" \
                 --bind="ctrl-g:transform:[ \"${fzf_bin}\" ] && echo \"$action_st\" || echo \"$action_sf\"" \
                 --bind="ctrl-s:transform:echo h > $action; echo accept" \
@@ -41,17 +41,17 @@ exec_action() {
     flag=$(command cat "$action" 2> /dev/null)
 
     if [[ "f" == "$flag" ]]; then
-        $CUSTOM_HOME/scripts/fzf/find-files "${directores[@]}"
+        $CUSTOM_HOME/scripts/fzf/find-files "${directories[@]}"
     elif [[ "g" == "$flag" ]]; then
-        $CUSTOM_HOME/scripts/fzf/search-string "${directores[@]}"
+        $CUSTOM_HOME/scripts/fzf/search-string "${directories[@]}"
     else
-        mkdir -p "$(dirname "${directores}")" &> /dev/null
+        mkdir -p "$(dirname "${directories}")" &> /dev/null
         if [[ "${flag}" =~ ^(h|v)$ ]]; then
-            tmux splitw "-b${flag}" zsh -c "${EDITOR} ${directores}"
+            tmux splitw "-b${flag}" zsh -c "${EDITOR} ${directories}"
         elif [[ "${flag}" == m ]]; then
-            $CUSTOM_HOME/scripts/tmux/tmux-menu $(realpath "${directores}")
+            $CUSTOM_HOME/scripts/tmux/tmux-menu $(realpath "${directories}")
         else
-            ${EDITOR} "${directores}"
+            ${EDITOR} "${directories}"
 
         fi
     fi
@@ -60,7 +60,7 @@ exec_action() {
 main() {
     [[ -v TMUX && $(command -v fzf-tmux) ]] && fzf_bin="fzf-tmux ${FZF_TMUX_OPTS}"
 
-    typeset directores action
+    typeset directories action
 
     typeset args
 
@@ -86,7 +86,7 @@ main() {
 
     zoxide_directores "$@"
 
-    [[ ${#directores[@]} -gt 0 ]] && exec_action
+    [[ ${#directories[@]} -gt 0 ]] && exec_action
 }
 
 main "$@"

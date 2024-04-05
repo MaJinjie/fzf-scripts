@@ -1,7 +1,7 @@
 #!/bin/env bash
 
 help() {
-    >&2 echo 'usage: ss [OPTIONS] [DIRECTORES] [--] [DIRECTORY MARKS]
+    >&2 echo 'usage: ss [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
 
     OPTIONS:
         -t bool types files,  Comma-separated
@@ -65,14 +65,14 @@ define_env() {
             done
         fi
     fi
-    echo \"reload:sleep 0.1;${rg_prefix} \${iglob_str} '\$search_str' ${directores[*]} || true\"
+    echo \"reload:sleep 0.1;${rg_prefix} \${iglob_str} '\$search_str' ${directories[*]} || true\"
     "
 }
 
 add_regular_directores() {
     for arg in "$@"; do
         if [[ -d "$arg" ]]; then
-            directores+=("$arg")
+            directories+=("$arg")
         else
             echo "$arg not a directory"
             exit 1
@@ -83,7 +83,7 @@ add_regular_directores() {
 
 parse_directory_mark() {
     typeset -ga match_dirs
-    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom/directores.toml}"
+    [[ -z ${marks_file} ]] && marks_file="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom/directories.toml}"
     if [[ ! -e ${marks_file} ]]; then
         echo "${marks_file} is not a file"
         exit 1
@@ -128,9 +128,9 @@ add_mark_directores() {
         if parse_directory_mark "$arg"; then
             for directory in "${match_dirs[@]}"; do
                 if [[ "$directory" == ${PWD}* ]]; then
-                    directores+=("$(realpath --no-symlinks --relative-to=${PWD} $directory)")
+                    directories+=("$(realpath --no-symlinks --relative-to=${PWD} $directory)")
                 else
-                    directores+=("$directory")
+                    directories+=("$directory")
                 fi
             done
         else
@@ -160,13 +160,13 @@ fzf_search() {
         ${fzf_bin:-fzf} --disabled \
             --query "$init_query" --prompt "Rg> " \
             --exact \
-            --bind "start:unbind(?)+reload:${rg_prefix} {q} ${directores[*]}" \
+            --bind "start:unbind(?)+reload:${rg_prefix} {q} ${directories[*]}" \
             --bind "change:transform:$transform_iglob" \
             --bind "ctrl-t:transform:[[ ! \$FZF_PROMPT =~ Rg ]] &&
             echo \"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:echo \{q} > $file_f; cat $file_r\" ||
             echo \"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:echo \{q} > $file_r; cat $file_f\"" \
             --delimiter : \
-            --header-first --header "keybindings: C-t(toggle fzf|rg), C-s(hsp), C-v(vsp), A-e(fzf-tmux-menu)" \
+            --header-first --header "keybindings: C-t(toggle fzf|rg), C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor)," \
             --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}' \
             --preview-window 'default:right:60%:~1:+{2}+3/2:border-left' \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
@@ -200,7 +200,7 @@ main() {
 
     # global
     typeset -A marks_map
-    typeset -a directores files
+    typeset -a directories files
     typeset transform_iglob action rg_prefix
 
     # args
