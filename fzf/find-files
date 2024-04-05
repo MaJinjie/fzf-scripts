@@ -135,7 +135,7 @@ main() {
     typeset action fd_prefix
 
     # args
-    typeset -a types left_args right_args
+    typeset -a types left_args right_args add_args
     typeset changed_time no_ignore max_depth=8 hidden=true
 
     ((i = 1))
@@ -145,7 +145,7 @@ main() {
     done
     right_args=("${@:$((i + 1))}")
 
-    args=$(getopt -o hnD:t:T:q: -l no-popup -n "$0" -- "${left_args[@]}")
+    args=$(getopt -o hnD:t:T:q:e:E: -l no-popup -n "$0" -- "${left_args[@]}")
     if [[ $? != 0 ]]; then
         echo "getopt parse error"
         exit 1
@@ -186,6 +186,18 @@ main() {
             init_query=$2
             shift 2
             ;;
+        -e)
+            while read -r ext; do
+                add_args+=("--extension=$ext")
+            done < <(echo "$2" | tr ',' '\n')
+            shift 2
+            ;;
+        -E)
+            while read -r glob; do
+                add_args+=("--exclude=$glob")
+            done < <(echo "$2" | tr ',' '\n')
+            shift 2
+            ;;
         --)
             shift
             break
@@ -200,10 +212,13 @@ main() {
     [[ $# -gt 0 ]] && add_regular_directores "$@"
     [[ ${#right_args} -gt 0 ]] && add_mark_directores "${right_args[@]}"
 
+    set -x
     fd_prefix="command fd --color=always --follow --max-depth=${max_depth} \
         ${hidden:+--hidden} ${no_ignore:+--no-ignore} ${changed_time} \
+        ${add_args[*]} \
         ${types[*]--tf} ${directories[*]:+^} ${directories[*]}"
 
+    set +x
     fzf_search
 
     [[ ${#files[@]} -gt 0 ]] && exec_action
