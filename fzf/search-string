@@ -156,6 +156,7 @@ fzf_search() {
 
     action_e="execute(${EDITOR} {1} +{2} > /dev/tty < /dev/tty)"
 
+    # +m -> -m multi select
     readarray -t files < <(
         ${fzf_bin:-fzf} --disabled \
             --query "$init_query" --prompt "Rg> " \
@@ -180,8 +181,9 @@ fzf_search() {
 exec_action() {
     flag=$(command cat "$action" 2> /dev/null)
 
+    set -x
     if [[ "${flag}" =~ ^(h|v)$ ]]; then
-        tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files}"
+        eval "tmux splitw -b${flag} zsh -c \"${EDITOR} ${files[*]}\""
     elif [[ "${flag}" == m ]]; then
         ((i = 0))
         while [[ $i -lt ${#files[@]} ]]; do
@@ -189,9 +191,9 @@ exec_action() {
             files[$i]="$(realpath ${file_path}) ${file_line}"
             ((i++))
         done
-        $CUSTOM_HOME/scripts/tmux/tmux-menu ${files}
+        eval "$CUSTOM_HOME/scripts/tmux/tmux-menu ${files[*]}"
     else
-        ${EDITOR} ${files}
+        eval "${EDITOR} ${files[*]}"
     fi
 }
 main() {
