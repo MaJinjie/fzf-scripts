@@ -8,7 +8,7 @@ help() {
         -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
         -D int, max-depth
         -h bool, cancel --hidden
-        -n bool, --no-ignore
+        -I bool, --no-ignore
         -q string, init_query
 
         --
@@ -145,7 +145,7 @@ main() {
     done
     right_args=("${@:$((i + 1))}")
 
-    args=$(getopt -o hnD:t:T:q:e:E: -l no-popup -n "$0" -- "${left_args[@]}")
+    args=$(getopt -o hID:t:T:q:e:E: -l no-popup -n "$0" -- "${left_args[@]}")
     if [[ $? != 0 ]]; then
         echo "getopt parse error"
         exit 1
@@ -174,7 +174,7 @@ main() {
             unset hidden
             shift
             ;;
-        -n)
+        -I)
             no_ignore="--no-ignore"
             shift
             ;;
@@ -212,13 +212,11 @@ main() {
     [[ $# -gt 0 ]] && add_regular_directores "$@"
     [[ ${#right_args} -gt 0 ]] && add_mark_directores "${right_args[@]}"
 
-    set -x
     fd_prefix="command fd --color=always --follow --max-depth=${max_depth} \
         ${hidden:+--hidden} ${no_ignore:+--no-ignore} ${changed_time} \
         ${add_args[*]} \
         ${types[*]--tf} ${directories[*]:+^} ${directories[*]}"
 
-    set +x
     fzf_search
 
     [[ ${#files[@]} -gt 0 ]] && exec_action

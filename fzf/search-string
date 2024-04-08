@@ -7,7 +7,7 @@ help() {
         -t bool types files,  Comma-separated
         -D int max-depth
         -h bool cancel --hidden
-        -n bool --no-ignore
+        -I bool --no-ignore 
         -q char*|string init_query
 
         --
@@ -214,7 +214,7 @@ main() {
     done
     right_args=("${@:$((i + 1))}")
 
-    args=$(getopt -o hnD:t:q: -l no-popup -n "$0" -- "${left_args[@]}")
+    args=$(getopt -o hID:t:q: -l no-popup -n "$0" -- "${left_args[@]}")
     if [[ $? != 0 ]]; then
         echo "getopt parse error"
         exit 1
@@ -241,7 +241,7 @@ main() {
             unset hidden
             shift
             ;;
-        -n)
+        -I)
             no_ignore="--no-ignore"
             shift
             ;;
