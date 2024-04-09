@@ -312,7 +312,7 @@ usage: ss [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
 3. 文件路径都使用`--scheme path`，find-oldfiles除外。
 4. 通过提供`FZF_TMUX_OPTS` 和 `fzf-tmux` 来使用tmux弹出窗口查询
 5. fzf的版本不得低于0.46.1，如何执行失败请使用更高版本。
-6. fzf过滤模式下，获取与最后一个文件名的最优匹配（而不是fullpath）
+6. fzf过滤模式下，获取与最后一个文件名的最优匹配（而不是fullpath）,拥有更好的匹配度
 
 这里附上我的`FZF_DEFAULT_OPTS`
 
