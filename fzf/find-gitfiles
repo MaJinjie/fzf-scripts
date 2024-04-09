@@ -31,6 +31,7 @@ fzf_search() {
         $git_prefix | lscolors | ${fzf_bin:-fzf} \
             --prompt="Gitfiles> " ${filter_query:+--filter "${filter_query}"} \
             --scheme path --exact --tiebreak "end,chunk,index" \
+            --delimiter / --nth -1 \
             --exit-0 --header-first \
             --header "keybindings: C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
@@ -59,7 +60,7 @@ exec_action() {
 
 main() {
     [[ $# -gt 1 && "$1" == help ]] && help
-    [[ -v TMUX && $(command -v fzf-tmux) ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+    [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     # 判断是否是一个git目录
     if ! git rev-parse --is-inside-work-tree &> /dev/null; then

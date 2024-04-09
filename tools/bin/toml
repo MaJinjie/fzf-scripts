@@ -1,0 +1,100 @@
+#!/bin/env bash
+
+get_table() {
+    if [[ ! -e ${toml_file} ]]; then
+        echo "${toml_file} is not a file" &> /dev/tty
+        exit 1
+    fi
+
+    [[ -z ${start_ln} ]] && start_ln=$(awk '/^\['"$table_name"'\]$/{print NR}' "${toml_file}" | sed -n '1p')
+    if [[ -z "${start_ln}" ]]; then
+        printf "In file %s, %s is not exists" toml_file table_name &> /dev/tty
+        exit 1
+    fi
+
+    [[ -z ${end_ln} ]] && end_ln=$(awk -v start_ln="${start_ln}" \
+        'NR>start_ln&&/^\[.*\]$/{print NR-1}END{print NR}' "${toml_file}" | sed -n '1p')
+
+    if [[ ${start_ln} -eq ${end_ln} ]]; then
+        printf "In file %s, %s is empty" toml_file table_name &> /dev/tty
+        exit 1
+    fi
+
+    echo "${start_ln} ${end_ln}"
+    return 0
+}
+
+_toml_pmarks() {
+    read -r start_ln end_ln < <(get_table)
+    marks=$(sed -n "${start_ln},${end_ln}p" "${toml_file}" | sed -n '/=/p' | awk '{print $1}')
+    echo "$marks"
+}
+
+_toml_gmark() {
+    read -r start_ln end_ln < <(get_table)
+
+    match_dirs=$(sed -n "${start_ln},${end_ln}p" "${toml_file}" | awk "arr_flag||/^${*} =/"'{
+        if(/\[$/) {
+            printf("%s", $0)
+            arr_flag=1
+        } else if (/^\]$/) {
+            printf("]")
+            arr_flag=0
+        } else {
+            printf("%s", $0)
+        }
+    }' | sed -r 's/^.+ = (.+)$/\1/' | tr -d '[]' | tr ',' ' ')
+
+    dirs=$(eval "echo ${match_dirs}")
+
+    if [[ -z "$dirs" ]]; then
+        echo "${*} is empty or parse error" &> /dev/tty
+        exit 1
+    fi
+    echo "$dirs"
+    return 0
+
+}
+
+main() {
+    while getopts "f:t:" opt; do
+        case "$opt" in
+        f)
+            toml_file="$OPTARG"
+            ;;
+        t)
+            table_name="$OPTARG"
+            ;;
+        *)
+            printf "error: %s-%s parse" opt OPTARG
+            exit 1
+            ;;
+
+        esac
+    done
+    shift $((OPTIND - 1))
+
+    valid_commands=(
+        "pmarks"
+        "gmark"
+    )
+    cmd="$1"
+    shift
+
+    if [[ ! " ${valid_commands[*]} " =~ " ${cmd} " ]]; then
+        if [[ -z "$cmd" ]]; then
+            printf "toml: missing command\n\n"
+        else
+            printf "toml: '%s' is not a valid parse-toml command.\n\n" "$cmd"
+        fi
+        printf "The following commands are supported:\n"
+        printf "\t%s\n" "${valid_commands[@]}"
+        exit 1
+    fi
+
+    _toml_"${cmd}" "$@"
+}
+
+main "$@"
+
+# main -f "/home/mjj/.config/custom/directories.toml" -t "marks" "mark_to_directories" "conf"

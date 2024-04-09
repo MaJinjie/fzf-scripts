@@ -13,7 +13,7 @@ get_oldfiles() {
     [[ -e ${filterfiles} ]] && truncate --size 0 ${filterfiles}
     while read -r file; do
 
-        if [[ -e ${file} && -r ${file} && ! ${file} =~ ^/tmp ]]; then
+        if [[ -e ${file} && -r ${file} && ! ${file} =~ ^/tmp && ! ${file} =~ .git ]]; then
             echo "${file}" >> ${filterfiles}
         fi
     done < "${oldfiles}"
@@ -31,6 +31,7 @@ fzf_search() {
         cat "${filterfiles}" | lscolors | ${fzf_bin:-fzf} \
             --prompt="Oldfiles> " ${filter_query:+--filter "${filter_query}"} \
             --scheme history --exact --tiebreak "end,chunk,index" \
+            --delimiter--nth -1 \
             --select-1 --exit-0 --header-first \
             --header "keybindings: C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
@@ -56,8 +57,7 @@ exec_action() {
 }
 
 main() {
-    # 调用nvim命令将最近打开的文件读入到$oldfiles中
-    [[ -v TMUX && $(command -v fzf-tmux) && $# -eq 0 ]] && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+    [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     typeset filterfiles action files
 
@@ -90,6 +90,7 @@ main() {
 
     get_oldfiles
 
+    set -x
     if [[ $# -eq 1 && $1 == - ]]; then
         files=$(sed -n '1p' "${filterfiles}")
     else

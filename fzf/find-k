@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+main() {
+    fzf_prefix="$CUSTOM_HOME/scripts/fzf"
+
+    while getopts "fs" opt; do
+        case $opt in
+        f)
+            cmd=$fzf_prefix"/find-files"
+            ;;
+        s)
+            cmd=$fzf_prefix"/search-string"
+            ;;
+        *)
+            printf "flag %s error\n\n" OPTARG
+            ;;
+        esac
+
+    done
+    shift $((OPTIND - 1))
+
+    [[ -z $parse_toml ]] && source "${CUSTOM_HOME}/scripts/tools/parse-toml"
+
+    typeset -a marks
+    for abbr in "$@"; do
+        mark=$(toml::pmarks | fzf --filter "^${abbr:0:1} ${abbr:1}" --tiebreak "begin,chunk,length,index" | sed -n '1p')
+        if [[ ! ${mark} ]]; then
+            printf "%s is not exists\n\n" abbr
+            return 1
+        else
+            marks+=("$mark")
+        fi
+    done
+
+    [[ ! "${marks[*]}" ]] && marks=(home)
+    if [[ "${cmd}" ]]; then
+        ${cmd} -- "${marks[@]}"
+    else
+        ${EDITOR} "$(toml::gmark "${marks}")"
+    fi
+
+}
+
+main "$@"

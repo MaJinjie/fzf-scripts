@@ -58,7 +58,7 @@ exec_action() {
 }
 
 main() {
-    [[ -v TMUX && $(command -v fzf-tmux) ]] && fzf_bin="fzf-tmux ${FZF_TMUX_OPTS}"
+    [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     typeset directories action
 
