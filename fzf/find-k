@@ -23,7 +23,10 @@ main() {
 
     typeset -a marks
     for abbr in "$@"; do
-        mark=$(toml::pmarks | fzf --filter "^${abbr:0:1} ${abbr:1}" --tiebreak "begin,chunk,length,index" | sed -n '1p')
+        mark=$(toml::pmarks | fzf \
+            --filter "${abbr}" \
+            --tiebreak "begin,chunk,length,index" |
+            sed -n '1p')
         if [[ ! ${mark} ]]; then
             printf "%s is not exists\n\n" abbr
             return 1

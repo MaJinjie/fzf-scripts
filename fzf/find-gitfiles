@@ -30,7 +30,8 @@ fzf_search() {
     readarray -t files < <(
         $git_prefix | lscolors | ${fzf_bin:-fzf} \
             --prompt="Gitfiles> " ${filter_query:+--filter "${filter_query}"} \
-            --scheme path --exact --delimiter / --nth -1 \
+            --scheme path --exact --tiebreak "end,chunk,index" \
+            --delimiter / --nth -1 \
             --exit-0 --header-first \
             --header "keybindings: C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \

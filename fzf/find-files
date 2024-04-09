@@ -70,6 +70,7 @@ fzf_search() {
         $cmd | ${fzf_bin:-fzf} \
             --query "$init_query" --prompt 'Files> ' \
             --scheme path --exact --tiebreak "end,chunk,index" \
+            --delimiter / --nth -1,-2 \
             --header-first --header "keybindings:C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
             --bind="ctrl-s:transform:echo h > $action; echo accept" \
             --bind="ctrl-v:transform:echo v > $action; echo accept" \

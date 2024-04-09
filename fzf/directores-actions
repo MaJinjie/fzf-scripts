@@ -24,8 +24,9 @@ zoxide_directores() {
         zoxide query --list | lscolors |
             ${fzf_bin:-fzf} \
                 --query "${*}" --prompt "Zoxide> " \
-                --exit-0 --header-first \
                 --exact --scheme history --tiebreak "end,chunk,index" \
+                --delimiter / --nth -1,-2,-3 \
+                --exit-0 --header-first \
                 --header "keybindings: C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
                 --bind="ctrl-f:transform:[ \"${fzf_bin}\" ] && echo \"$action_ft\" || echo \"$action_ff\"" \
                 --bind="ctrl-g:transform:[ \"${fzf_bin}\" ] && echo \"$action_st\" || echo \"$action_sf\"" \
