@@ -4,6 +4,7 @@
 4. ff ./fzf/find-files 查找文件
 5. ss ./fzf/search-string 搜索文本
 6. ja ./fzf/directores-actions 选择directores + actions
+7. fk ./fzf/find-k fzf-filter 目录标记
 
 # install
 
@@ -84,10 +85,10 @@ add to env PATH
 # /home/mjj/dotfiles/.config/zsh/zsh.d/41-aliases.zsh
 # /home/mjj/dotfiles/.config/zsh/zsh.d/70-export-plug.zsh
 # /home/mjj/dotfiles/.local/bin/nvim/ss
-# /home/mjj/.config/custom/directores.toml
+# /home/mjj/.config/custom/directories.toml
 
 fo - # open /home/mjj/dotfiles/.local/scripts/.gitignore
-fo toml # open /home/mjj/.config/custom/directores.toml
+fo toml # open /home/mjj/.config/custom/directories.toml
 fo zsh # open  /home/mjj/dotfiles/.config/zsh/.zshenv
 ```
 
@@ -141,14 +142,14 @@ usage: fg [OPTIONS] [init_query]
 > 最核心的两个脚本之一
 
 ```bash
-usage: ff [OPTIONS] [DIRECTORES] [--] [DIRECTORY MARKS]
+usage: ff [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
 
     OPTIONS:
         -t char set, file types dfxlspebc
         -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
         -D int, max-depth
         -h bool, cancel --hidden
-        -n bool, --no-ignore
+        -I bool, --no-ignore
         -q string, init_query
 
         --
@@ -195,13 +196,13 @@ test_arr = [
 交互式查找字符串
 
 ```bash
-usage: ss [OPTIONS] [DIRECTORES] [--] [DIRECTORY MARKS]
+usage: ss [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
 
     OPTIONS:
         -t bool types files,  Comma-separated
         -D int max-depth
         -h bool cancel --hidden
-        -n bool --no-ignore
+        -I bool --no-ignore
         -q char*|string init_query
 
         --
@@ -265,7 +266,7 @@ usage: ss [OPTIONS] [DIRECTORES] [--] [DIRECTORY MARKS]
             done
         fi
     fi
-    echo \"reload:sleep 0.1;${rg_prefix} \${iglob_str} '\$search_str' ${directores[*]} || true\"
+    echo \"reload:sleep 0.1;${rg_prefix} \${iglob_str} '\$search_str' ${directories[*]} || true\"
     "
 ```
 
@@ -299,18 +300,19 @@ usage: ss [OPTIONS] [DIRECTORES] [--] [DIRECTORY MARKS]
 
 ## 1 变量
 
-1. 目录标志定义的优先级为`$CUSTOM_MARKS_FILE > $XDG_CONFIG_HOME/custom/directores.toml > $HOME/.config/custom/directores.toml` 中。
-   具体为：`${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom/directores.toml}`
+1. 目录标志定义的优先级为`$CUSTOM_MARKS_FILE > $XDG_CONFIG_HOME/custom/directories.toml > $HOME/.config/custom/directories.toml` 中。
+   具体为：`${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom/directories.toml}`
 2. `CUSTOM_HOME` ，其中 fzf脚本位于`$CUSTOM_HOME/scripts/fzf` tmux脚本位于`$CUSTOM_HOME/scripts/tmux`。
    如果需要直接修改脚本`exec_action`函数即可
 
-## 2 fzf变量
+## 2 fzf
 
 1. 非特殊情况，都是使用`--exact`标志进行精确匹配（匹配效果好）
 2. 文件路径都使用`--tiebreak end,chunk,index`，在进行交互时，从后往前开始输入。
 3. 文件路径都使用`--scheme path`，find-oldfiles除外。
 4. 通过提供`FZF_TMUX_OPTS` 和 `fzf-tmux` 来使用tmux弹出窗口查询
 5. fzf的版本不得低于0.46.1，如何执行失败请使用更高版本。
+6. fzf过滤模式下，获取与最后一个文件名的最优匹配（而不是fullpath）
 
 这里附上我的`FZF_DEFAULT_OPTS`
 
