@@ -381,3 +381,43 @@ export FZF_TMUX_OPTS="-p70%,80%"
 ## 其他
 
 1. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。
+
+# zoxide
+
+重写了`__zoxide_z`和`__zoxide_zi`, 和往常一样使用即可。
+
+```bash
+## zxoide
+function __zoxide_filter() {
+  if [[ $# -eq 0 ]]; then
+    echo "cat"
+  else
+    echo "fzf --filter \"${*}\" --exact --scheme history --tiebreak \"end,chunk,index\""
+  fi
+}
+function __zoxide_z() {
+    # shellcheck disable=SC2199
+    if [[ "$#" -eq 0 ]]; then
+        __zoxide_cd ~
+    elif [[ "$#" -eq 1 ]] && { [[ -d "$1" ]] || [[ "$1" = '-' ]] || [[ "$1" =~ ^[-+][0-9]$ ]]; }; then
+        __zoxide_cd "$1"
+    else
+        # set -x
+        builtin local result
+        # shellcheck disable=SC2312
+        result="$(command zoxide query --exclude "$(__zoxide_pwd)" --list |
+            eval "$(__zoxide_filter $@)" | sed -n '1p')" && __zoxide_cd "${result}"
+    fi
+}
+# Jump to a directory using interactive search.
+function __zoxide_zi() {
+    [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin=(fzf-tmux $FZF_TMUX_OPTS)
+    builtin local result
+    # set -x
+    result="$(command zoxide query --exclude "$(__zoxide_pwd)" --list | eval "$(__zoxide_filter $@)" |
+        lscolors | ${fzf_bin[*]:-fzf} +m \
+            --exact --scheme history \
+            --delimiter / --nth -1,-2,-3 \
+    )" && __zoxide_cd "${result}"
+}
+```
