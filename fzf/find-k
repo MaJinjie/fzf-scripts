@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+help() {
+    >&2 echo 'usage: ff [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
+
+    OPTIONS:
+        -f find-files 
+        -s search-string
+        default editor
+    '
+    exit
+}
+
 main() {
     fzf_prefix="$CUSTOM_HOME/scripts/fzf"
 
@@ -23,9 +34,12 @@ main() {
 
     typeset -a marks
     for abbr in "$@"; do
+        for ((i = 0; i < ${#abbr}; i++)); do
+            filter_query+="${abbr:$i:1} "
+        done
         mark=$(toml::pmarks | fzf \
-            --filter "${abbr}" \
-            --tiebreak "begin,chunk,length,index" |
+            --filter "^${filter_query}" \
+            --tiebreak "length,begin,chunk,index" |
             sed -n '1p')
         if [[ ! ${mark} ]]; then
             printf "%s is not exists\n\n" abbr

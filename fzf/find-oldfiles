@@ -90,7 +90,6 @@ main() {
 
     get_oldfiles
 
-    set -x
     if [[ $# -eq 1 && $1 == - ]]; then
         files=$(sed -n '1p' "${filterfiles}")
     else

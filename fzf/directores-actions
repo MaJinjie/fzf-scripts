@@ -9,6 +9,14 @@ help() {
     exit
 }
 
+filter() {
+    if [[ $# -eq 0 ]]; then
+        echo "cat"
+    else
+        echo "fzf --filter \"${*}\" --exact --scheme history --tiebreak \"end,chunk,index\""
+    fi
+}
+
 zoxide_directores() {
     action=/tmp/$$
     [[ -e $action ]] && exit 1
@@ -20,11 +28,12 @@ zoxide_directores() {
     action_st="transform:echo g > $action; echo accept"
     action_e="execute(${EDITOR} {+} > /dev/tty < /dev/tty)"
 
+    # shellcheck disable=SC2068
     readarray -t directories < <(
-        zoxide query --list | lscolors |
+        zoxide query --list | eval "$(filter $@)" | lscolors |
             ${fzf_bin:-fzf} \
-                --query "${*}" --prompt "Zoxide> " \
-                --exact --scheme history --tiebreak "end,chunk,index" \
+                --prompt "Zoxide> " \
+                --exact --scheme path \
                 --delimiter / --nth -1,-2,-3 \
                 --exit-0 --header-first \
                 --header "keybindings: C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(select or new file)" \
