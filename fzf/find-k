@@ -53,7 +53,7 @@ main() {
     if [[ "${cmd}" ]]; then
         ${cmd} -- "${marks[@]}"
     else
-        ${EDITOR} "$(toml::gmark "${marks}")"
+        ${EDITOR} "$(toml::gmark "${marks[0]}")"
     fi
 
 }
