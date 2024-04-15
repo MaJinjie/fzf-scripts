@@ -24,7 +24,7 @@ fzf_search() {
         filter=1
         fzf_bin=
     fi
-
+    # git -c color.status=false --no-optional-locks status --porcelain=v1 | sed -E 's/^(.{2})/[\1]/'
     readarray -t files < <(
         $git_prefix | lscolors | ${fzf_bin:-fzf} \
             --prompt="Gitfiles> " ${filter:+--filter "$*"} \

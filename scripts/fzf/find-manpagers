@@ -7,8 +7,7 @@ main() {
 
     result=$(
         man -k . | ${fzf_bin:-fzf} +m \
-            --prompt "Man> " --query "${*}" \
-            --exact --tiebreak "begin" |
+            --prompt "Man> " --query "${*}" --nth 1 |
             awk '{print $1}'
     )
     [[ -n $result ]] && {
