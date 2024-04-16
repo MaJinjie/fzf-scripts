@@ -11,36 +11,9 @@ help() {
         -o + --others
         -i + --ignored
         -P no-popup
+        -u + --untracked-file=all
     '
     exit
-}
-
-fzf_search() {
-    if ! cd "$(git rev-parse --show-toplevel)" &> /dev/null; then
-        echo "git not exists"
-        exit 1
-    fi
-    if [[ $# -gt 0 ]]; then
-        filter=1
-        fzf_bin=
-    fi
-    # git -c color.status=false --no-optional-locks status --porcelain=v1 | sed -E 's/^(.{2})/[\1]/'
-    readarray -t files < <(
-        $git_prefix | lscolors | ${fzf_bin:-fzf} \
-            --prompt="Gitfiles> " ${filter:+--filter "$*"} \
-            --scheme path --exact --tiebreak "end,chunk,index" \
-            --delimiter / --nth -1,-2 \
-            --exit-0 --header-first \
-            --header "keybindings:C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(editor|print)" \
-            --expect "ctrl-s,ctrl-v,ctrl-o" \
-            --bind="alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)" \
-            --bind="ctrl-s:accept" \
-            --bind="ctrl-v:accept" \
-            --bind="ctrl-o:accept" \
-            --bind="enter:accept-or-print-query"
-    )
-
-    [[ ${filter} ]] && files=("${files[0]}")
 }
 
 exec_action() {
@@ -74,8 +47,7 @@ main() {
         exit 1
     fi
     # global
-    typeset git_prefix
-    typeset -a files
+    typeset files cmd opts action_file
 
     # args
     typeset -a git_flags
@@ -118,6 +90,10 @@ main() {
             git_flags+=("--others")
             shift
             ;;
+        # -u)
+        #     flag_untracked=1
+        #     shift
+        #     ;;
         --)
             shift
             break
@@ -130,11 +106,77 @@ main() {
         esac
     done
 
-    git_prefix="git ls-files --with-tree=HEAD ${git_flags[*]}"
+    if ! cd "$(git rev-parse --show-toplevel)" &> /dev/null; then
+        echo "git not exists"
+        exit 1
+    fi
+    if [[ $# -gt 0 ]]; then
+        filter=1
+        fzf_bin=
+    fi
 
-    # 得到files
-    fzf_search "$@"
+    # action_file=/tmp/gitfiles$$
+    # trap "command rm -f $action_file" EXIT SIGINT SIGTERM
 
+    cmd="
+    f() { (
+        git status -s --porcelain | sed -n '/^??/!p'
+        git ls-files --exclude-standard --with-tree=HEAD ${git_flags[*]} | sed 's/^/   /'
+        [[ \" \$* \" == *untracked* ]] && git status -s --porcelain --untracked-file=all | sed -n '/^??/p'
+        ) | awk '!x[\$NF]++{print}' | sed -E 's/^(..)/[\1]/' | awk '{
+        cmd=\"echo \"\$NF\" | zsh -c lscolors\"
+        printf(\"%s \", substr(\$0, 1, 4)) 
+        system(cmd)
+      }'; 
+    }
+    "
+    git_actions_toggle="
+        if [[ \$FZF_PROMPT =~ ^Gitfiles ]]; then
+            echo \\\"change-prompt(GitActions > )+rebind(A,U,M)\\\"
+        else
+            echo \\\"change-prompt(Gitfiles > )+unbind(A,U,M)\\\"
+        fi
+    "
+    gitfile_extract="sed -r 's/\[.\{2}\]//g'"
+
+    preview="
+        file=\$(echo {} | sed -r 's/^\\\[.*\\\] //')
+        if (git status -s -- \\\"\$file\\\" | grep '^.M') &>/dev/null; then
+            git diff --color=always -- \\\"\$file\\\" | delta
+        elif (git status -s -- \\\"\$file\\\" | grep '^M.') &>/dev/null; then
+            git diff --cached --color=always -- \\\"\$file\\\" | delta
+        else
+            bkt --ttl 1m -- bat --style=numbers --color=always -- \\\"\$file\\\"
+        fi"
+
+    opts="
+    $FZF_DEFAULT_OPTS
+    --prompt=\"Gitfiles> \" 
+    ${filter:+--filter \"$*\"}
+    --scheme path --exact --tiebreak \"end,chunk,index\" 
+    --delimiter / --nth -1 --exit-0 
+    --header \"keybindings:C-s, C-v, C-o, C-g, A-e, Enter, ?(AUM)\"
+    --expect \"ctrl-s,ctrl-v,ctrl-o\"
+    --preview=\"$preview\"
+    --bind=\"start:unbind(A,U,M)\"
+    --bind=\"ctrl-s:accept\"
+    --bind=\"ctrl-v:accept\"
+    --bind=\"ctrl-o:accept\"
+    --bind=\"enter:accept-or-print-query\"
+    --bind=\"?:transform:$git_actions_toggle\"
+    "
+
+    readarray -t files < <(
+        eval "$cmd f" | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} \
+            --bind="alt-e:execute(${EDITOR} \$(echo {+} | $gitfile_extract) > /dev/tty < /dev/tty)" \
+            --bind="A:execute(git add \$(echo {+} | $gitfile_extract))+reload($cmd f)" \
+            --bind="U:execute(git restore --staged \$(echo {+} | $gitfile_extract))+reload($cmd f)" \
+            --bind="M:execute(git restore \$(echo {+} | $gitfile_extract))+reload($cmd f)" \
+            --bind="ctrl-g:reload($cmd f untracked)" |
+            awk '{print $NF}'
+    )
+
+    [[ ${filter} ]] && files=("${files[0]}")
     [[ ${#files[@]} -gt 0 ]] && exec_action
 }
 

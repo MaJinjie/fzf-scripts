@@ -44,6 +44,7 @@ main() {
     done< <(tmux list-windows -t \$session_name)
     )) 2> /dev/null"
     opts="
+    --prompt \"Attach | New >\"
     --preview=\"$preview_cmd\"
     --bind=\"enter:accept-or-print-query\"
     --bind=\"alt-enter:print-query\"

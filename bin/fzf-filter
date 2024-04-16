@@ -73,6 +73,10 @@ valid_modes=(
     "zoxide"
     "git"
 )
+if [[ $1 == "list" ]]; then
+    echo "${valid_modes[@]}"
+    exit 0
+fi
 
 if [[ -z $1 || " ${valid_modes[*]} " != *"$1"* ]]; then
     echo "$1 not in ${valid_modes[*]}"

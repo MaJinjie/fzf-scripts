@@ -123,6 +123,16 @@ tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
 类似于find-oldfiles， 文件列表是当前git仓库的文件。
 其中，文件列表使用`git ls-files --[flags]`得到。
 
+**新增了以下功能**：
+
+1. 为文件增加增加git状态，同时保留文件的颜色
+2. `c-g`显示git仓库未跟踪文件
+3. `?`切换为git操作模式，按压`AUM`，分别对选中的文件执行`git add | git restore --staged | git restore`
+4. 修改了预览视图，命令为`git diff --color=always }`
+   - .M 显示暂存区和工作区的差异
+   - M. 查看暂存区和版本库之间的差异
+   - 其他 bat
+
 ### options
 
 ```bash
@@ -318,8 +328,9 @@ fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前�
    - 否则就是根目录前缀，`name=/<second to last directory>-<last directory>`
    - 考虑到来了只有一个目录的情况
 3. 支持以查询字符串作为会话名创建。
-4. 考虑受到搜索条目的影响，不能很好得打印查询字符串，定义`alt-enter`为`print-query`。
-5. 实现了tmux会话的基本预览效果。
+4. 如果只有一个参数`-`，那么就会以当前目录创建会话。
+5. 考虑受到搜索条目的影响，不能很好得打印查询字符串，定义`alt-enter`为`print-query`。
+6. 实现了tmux会话的基本预览效果。
    预览效果如下:
 
    ```bash
@@ -418,7 +429,16 @@ export FZF_TMUX_OPTS="-p70%,80%"
 
 1. 如果没有`lscolors`, 请使用对应的包管理工具下载或访问https://github.com/sharkdp/lscolors下载。
 
-# zoxide
+# 我认为好用的
+
+## aliases
+
+```bash
+vi="f() {${EDITOR} \${*:-.}; }; f" # vi会直接打开当前目录，而不是一个未命名的缓冲区。
+
+```
+
+## zoxide
 
 重写了`__zoxide_z`和`__zoxide_zi`, 和往常一样使用即可。
 

@@ -28,9 +28,9 @@ main() {
     [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     typeset args
-    typeset flag_nopopup flag_P filter_mode
+    typeset flag_nopopup flag_P
 
-    args=$(getopt -o P -l no-popup,mode: -n "$0" -- "$@")
+    args=$(getopt -o P -l no-popup: -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
@@ -43,10 +43,6 @@ main() {
         --no-popup)
             flag_nopopup=1
             shift
-            ;;
-        --mode)
-            filter_mode=$2
-            shift 2
             ;;
         --)
             shift
@@ -74,9 +70,17 @@ main() {
     --bind=\"enter:accept-or-print-query\" 
     "
 
-    readarray -t directories < <(FILTER_FZF_DEFAULT_OPTS="$opts" fzf-filter "$filter_mode" "${flag_P:+-P}" "$@")
+    readarray -t directories < <(FILTER_FZF_DEFAULT_OPTS="$opts" fzf-filter "$mode" "${flag_P:+-P}" "$@")
 
     [[ ${#directories[@]} -gt 0 ]] && exec_action
 }
+
+if [[ -z $1 || " $(fzf-filter list) " != *"$1"* ]]; then
+    echo "$1 is invalid"
+    exit 1
+fi
+
+mode=$1
+shift
 
 main "$@"
