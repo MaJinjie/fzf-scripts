@@ -270,9 +270,23 @@ usage: ss [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
     "
 ```
 
-## directores-actions
+## fzf-filter
 
-目录选择 + 执行动作
+> 根据指定模式进行过滤，即以指定目录集作为源进行过滤。
+
+```bash
+fzf-filter zoxide # 以zoxide中的目录作为源过滤
+fzf-filter git # 以所有git仓库的根目录作为源过滤
+
+fzf-filter -P # 不popup
+fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前或源后同时过滤
+```
+
+它拥有良好的拓展性，你只需要在脚本中添加一个`__<mode>_mode` 函数，即可新增一种过滤模式。
+
+## editor-filter
+
+> 取代了directories-actions
 
 ### 目录选择
 
@@ -287,14 +301,36 @@ usage: ss [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
 4. 菜单打开
 5. 打开现有或打开一个新的目录
 
-**如想要添加新的目录选择，请定义一个函数，添加一个选项去处理即可。**
-
 # tmux
 
 ## fzf-tmux-menu
 
 使用tmux菜单实现9种方式拆分,可以集成到上述脚本中使用
 `top bottom left right fulltop fullbottom fullleft fullright new-window`
+
+## session.sh
+
+**支持以下功能**：
+
+1. 附加到现有的非当前会话
+2. 从zoxide或其他目录源(目前没有实现其他目录源)中选择一个目录作为会话的起始目录，会话名命名规则如下：
+   - 如果是家目录为前缀，`name=~<second to last directory>-<last directory>`
+   - 否则就是根目录前缀，`name=/<second to last directory>-<last directory>`
+   - 考虑到来了只有一个目录的情况
+3. 支持以查询字符串作为会话名创建。
+4. 考虑受到搜索条目的影响，不能很好得打印查询字符串，定义`alt-enter`为`print-query`。
+5. 实现了tmux会话的基本预览效果。
+   预览效果如下:
+
+   ```bash
+   1: bash* (2 panes) [159x42] [layout f8ef,159x42,0,0{82x42,0,0,1,76x42,83,0,2}] @1 (active)
+    -> 1: [82x41] [history 78/50000, 281063 bytes] %1 (active)
+    -> 2: [76x41] [history 294/50000, 338749 bytes] %2
+   2: zsh- (2 panes) [159x42] [layout b7fa,159x42,0,0{79x42,0,0,23,79x42,80,0,24}] @22
+    -> 1: [79x41] [history 11/50000, 26362 bytes] %23
+    -> 2: [79x41] [history 8/50000, 13955 bytes] %24 (active)
+
+   ```
 
 # 注意
 
