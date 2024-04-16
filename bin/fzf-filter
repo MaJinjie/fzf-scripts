@@ -10,11 +10,11 @@ __filter() {
 
 __zoxide_filter() {
     filter_opts="
-    $FZF_DEFAULT_OPTS
     --exact --scheme history
     --tiebreak end,chunk,index
     "
     opts="
+    $FZF_DEFAULT_OPTS
     $filter_opts
     --prompt \"Zoxide > \" 
     --delimiter / --nth -1,-2,-3 
@@ -24,8 +24,12 @@ __zoxide_filter() {
 
     # shellcheck disable=SC2068
     directories=$(
-        zoxide query --list | eval "$(FZF_DEFAULT_OPTS="$filter_opts" __filter $@)" |
-            lscolors | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf}
+        (
+            [[ $stdin == "before" ]] && cat -
+            zoxide query --list | eval "$(FZF_DEFAULT_OPTS="$filter_opts" __filter $@)" |
+                lscolors
+            [[ $stdin == "after" ]] && cat -
+        ) | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf}
     )
     exit_code=$?
 }
@@ -33,15 +37,19 @@ __zoxide_filter() {
 main() {
     [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
-    typeset exit_code directories
+    typeset exit_code directories stdin
 
-    args=$(getopt -o P -n "$0" -- "$@")
+    args=$(getopt -o P -l after,before -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
         case $1 in
         -P)
             fzf_bin=
+            shift
+            ;;
+        --after | --before)
+            stdin=${1:2}
             shift
             ;;
         --)
@@ -58,6 +66,7 @@ main() {
     __${mode}_filter "$@" && [[ $exit_code -eq 130 ]] && return "$exit_code"
 
     echo "$directories"
+    return "$exit_code"
 }
 
 valid_modes=(
@@ -65,7 +74,7 @@ valid_modes=(
     "git"
 )
 
-if [[ " ${valid_modes[*]} " != *"$1"* ]]; then
+if [[ -z $1 || " ${valid_modes[*]} " != *"$1"* ]]; then
     echo "$1 not in ${valid_modes[*]}"
     exit 1
 fi
