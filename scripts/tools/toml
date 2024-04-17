@@ -97,5 +97,3 @@ if [[ ! " ${valid_commands[*]} " =~ " $cmd " ]]; then
 fi
 
 main "$@"
-
-# main -f "/home/mjj/.config/custom/directories.toml" -t "marks" "mark_to_directories" "conf"

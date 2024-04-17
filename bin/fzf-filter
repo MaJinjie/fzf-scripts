@@ -1,14 +1,19 @@
 #!/bin/env bash
 
-__filter() {
-    if [[ $# -eq 0 ]]; then
-        echo "cat"
-    else
-        echo "fzf --filter \"${*}\""
-    fi
+filter::zoxide() {
+    cmd="zoxide query --list" __files_filter "$@"
+}
+filter::marks() {
+    cmd="__toml pmarks" __marks_filter "$@"
+
+}
+__toml() {
+    toml_path="${CUSTOM_HOME}/scripts/tools/toml"
+    config_dir="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}"
+    $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
 }
 
-__zoxide_filter() {
+__files_filter() {
     filter_opts="
     --exact --scheme history
     --tiebreak end,chunk,index
@@ -23,21 +28,53 @@ __zoxide_filter() {
     "
 
     # shellcheck disable=SC2068
-    directories=$(
+    Results=$(
         (
-            [[ $stdin == "before" ]] && cat -
-            zoxide query --list | eval "$(FZF_DEFAULT_OPTS="$filter_opts" __filter $@)" |
+            [[ $Stdin == "before" ]] && cat -
+            eval "$cmd" | (if [[ $# -gt 0 ]]; then FZF_DEFAULT_OPTS="$filter_opts" fzf --filter "$*"; else cat; fi) |
                 lscolors
-            [[ $stdin == "after" ]] && cat -
+            [[ $Stdin == "after" ]] && cat -
         ) | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf}
     )
-    exit_code=$?
+    Exit_code=$?
+}
+__marks_filter() {
+    typeset opts
+
+    opts="
+    $FZF_DEFAULT_OPTS
+    --exact
+    --tiebreak \"length,begin,chunk,index\"
+    "
+
+    list=$(eval "$cmd")
+    if ((0)) && [[ $# -eq 0 ]]; then
+        Results=$(FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} <<< "$list")
+        Exit_code=$?
+    else
+        for abbr in "$@"; do
+            for ((i = 0; i < ${#abbr}; i++)); do
+                filter_query+="${abbr:$i:1} "
+            done
+            mark=$(FZF_DEFAULT_OPTS="$opts" fzf --filter "^${filter_query}" <<< "$list" |
+                sed -n '1p')
+            if [[ ! ${mark} ]]; then
+                printf "%s is not exists\n\n" abbr > /dev/tty
+                return 130
+            fi
+            [[ -n ${Results} ]] && Results+="\n"
+            Results+="$mark"
+            filter_query=
+            list="${list/${mark}/}"
+        done
+        Exit_code=0
+    fi
 }
 
 main() {
     [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
-    typeset exit_code directories stdin
+    typeset Exit_code Results Stdin
 
     args=$(getopt -o P -l after,before -n "$0" -- "$@")
     eval set -- "$args"
@@ -49,7 +86,7 @@ main() {
             shift
             ;;
         --after | --before)
-            stdin=${1:2}
+            Stdin=${1:2}
             shift
             ;;
         --)
@@ -63,14 +100,15 @@ main() {
         esac
     done
 
-    __${mode}_filter "$@" && [[ $exit_code -ne 130 ]] && echo "$directories"
+    command -v filter::$MODE &> /dev/null && filter::$MODE "$@" && [[ $Exit_code -ne 130 ]] && echo -e "$Results"
 
-    return "$exit_code"
+    return "$Exit_code"
 }
 
 valid_modes=(
     "zoxide"
     "git"
+    "marks"
 )
 if [[ $1 == "list" ]]; then
     echo "${valid_modes[@]}"
@@ -82,7 +120,7 @@ if [[ -z $1 || " ${valid_modes[*]} " != *"$1"* ]]; then
     exit 1
 fi
 
-mode=$1
+MODE=$1
 shift
 
 main "$@"

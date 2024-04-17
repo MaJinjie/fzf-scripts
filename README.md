@@ -3,8 +3,8 @@
 3. fg ./fzf/find-gitfiles 查找当前所处git仓库的文件
 4. ff ./fzf/find-files 查找文件
 5. ss ./fzf/search-string 搜索文本
-6. ja ./fzf/directores-actions 选择directores + actions
-7. fk ./fzf/find-k fzf-filter 目录标记
+6. fzf-filter 执行命令 + 过滤功能(实时或后台)
+7. fzf-action.sh 对过滤后的条目选择性地执行定义的动作(相当于后端执行程序)
 
 # install
 
@@ -19,9 +19,12 @@ alias fm="$CUSTOM_HOME/scripts/fzf/find-manpagers"
 alias fo="$CUSTOM_HOME/scripts/fzf/find-oldfiles"
 alias ff="$CUSTOM_HOME/scripts/fzf/find-files"
 alias fg="$CUSTOM_HOME/scripts/fzf/find-gitfiles"
-alias ja="$CUSTOM_HOME/scripts/fzf/directores-actions"
 alias ss="$CUSTOM_HOME/scripts/fzf/search-string"
+alias fk="$CUSTOM_HOME/scripts/fzf/fzf-action.sh marks -A find-files"
+alias sk="$CUSTOM_HOME/scripts/fzf/fzf-action.sh marks -A search-string"
 
+
+alias di="$CUSTOM_HOME/scripts/fzf/fzf-action.sh zoxide"
 ```
 
 **or**
@@ -292,24 +295,14 @@ fzf-filter -P # 不popup
 fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前或源后同时过滤
 ```
 
+对于marks,我关闭了它的在线过滤属性， 你会看到这么一句代码`if ((0)) && [[ $# -eq 0 ]]; then`, 因此它永远不会发生。
+若要开启，请删除`((0)) &&`
+
 它拥有良好的拓展性，你只需要在脚本中添加一个`__<mode>_mode` 函数，即可新增一种过滤模式。
 
-## editor-filter
+## fzf-action
 
-> 取代了directories-actions
-
-### 目录选择
-
-1. 从zoxide中选择目录。 (实现，默认)
-2. 从系统中的所有git仓库选择目录。（未实现）
-
-### 执行动作
-
-1. find-files。使用find-files脚本
-2. search-string。使用search-string脚本
-3. 分割窗口打开
-4. 菜单打开
-5. 打开现有或打开一个新的目录
+> 取代了directories-actions, 对fzf-filter筛选出的条目执行你想要的操作
 
 # tmux
 
@@ -351,6 +344,37 @@ fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前�
      popup -xC -yC -w70% -h80% -e TMUX_POPUP=1  -E "/home/mjj/.custom/scripts/tmux/session.sh"
    }
    ```
+
+# tools
+
+## toml
+
+> 自己使用bash编写的一个用来解析toml文件的简单工具。
+
+1. `-f` 指定解析文件的路径
+2. `-t` 指定解析的哪一个表
+
+例如：
+
+```bash
+# 在find-files脚本中使用函数封装解析toml文件的信息
+toml() {
+    toml_path="${CUSTOM_HOME}/scripts/tools/toml"
+    config_dir="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}"
+    $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
+}
+toml pmarks # 打印出对应文件对应表中定义的所有键
+toml gmark "key" # 获取表中某一个键对应的值（只允许一个键，多个键可以写循环，尽量使功能单一化，方便调用和维护）
+
+# 目前支持解析的形式（也只用到这么多）
+
+key = "val"
+key = [ "val1", "val2" ]
+key = [
+    "val1",
+    "val2",
+]
+```
 
 # 注意
 
