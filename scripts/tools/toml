@@ -74,26 +74,27 @@ main() {
     done
     shift $((OPTIND - 1))
 
-    valid_commands=(
-        "pmarks"
-        "gmark"
-    )
-    cmd="$1"
-    shift
-
-    if [[ ! " ${valid_commands[*]} " =~ " ${cmd} " ]]; then
-        if [[ -z "$cmd" ]]; then
-            printf "toml: missing command\n\n"
-        else
-            printf "toml: '%s' is not a valid parse-toml command.\n\n" "$cmd"
-        fi
-        printf "The following commands are supported:\n"
-        printf "\t%s\n" "${valid_commands[@]}"
-        exit 1
-    fi
-
     _toml_"${cmd}" "$@"
 }
+
+valid_commands=(
+    "pmarks"
+    "gmark"
+)
+
+cmd="$1"
+shift
+
+if [[ ! " ${valid_commands[*]} " =~ " $cmd " ]]; then
+    if [[ -z "$cmd" ]]; then
+        printf "toml: missing command\n\n" > /dev/tty
+    else
+        printf "toml: '%s' is not a valid parse-toml command.\n\n" "$cmd" > /dev/tty
+    fi
+    printf "The following commands are supported:\n" > /dev/tty
+    printf "\t%s\n" "${valid_commands[@]}" > /dev/tty
+    exit 1
+fi
 
 main "$@"
 

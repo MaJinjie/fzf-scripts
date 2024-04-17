@@ -36,10 +36,14 @@ add_regular_directores() {
 }
 
 add_mark_directores() {
-    [[ -z $parse_toml ]] && source "${CUSTOM_HOME}/scripts/tools/parse-toml"
+    toml() {
+        toml_path="${CUSTOM_HOME}/scripts/tools/toml"
+        config_dir="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}"
+        $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
+    }
 
     for arg in "$@"; do
-        dirs=$(toml::gmark "$arg")
+        dirs=$(toml gmark "$arg")
         if [[ $? -ne 0 ]]; then
             exit 1
         fi
@@ -47,22 +51,13 @@ add_mark_directores() {
             if [[ -d $dir ]]; then
                 directories+=("$dir")
             else
-                echo "$dir" | lscolors >> $ff_file
+                extra_files+=("$dir")
             fi
         done
     done
 }
 
 fzf_search() {
-    trap "command rm -f $ff_file" EXIT SIGINT SIGTERM
-
-    if [[ -e $ff_file ]]; then
-        $fd_prefix >> $ff_file
-        cmd="cat ${ff_file}"
-    else
-        cmd="${fd_prefix}"
-    fi
-
     readarray -t files < <(
         $cmd | ${fzf_bin:-fzf} \
             --query "$init_query" --prompt 'Files> ' \
@@ -104,8 +99,8 @@ main() {
     [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
     # global
-    typeset -a directories files
-    typeset fd_prefix ff_file=/tmp/ff-$$
+    typeset -a directories extra_files files
+    typeset dir_cmd file_cmd
 
     # args
     typeset -a types left_args right_args add_args
@@ -185,11 +180,27 @@ main() {
     [[ $# -gt 0 ]] && add_regular_directores "$@"
     [[ ${#right_args} -gt 0 ]] && add_mark_directores "${right_args[@]}"
 
-    fd_prefix="command fd --color=always --follow --max-depth=${max_depth} \
+    file_cmd="printf %s\n ${extra_files[*]}"
+    dir_cmd="command fd --color=always --follow --max-depth=${max_depth} \
         ${hidden:+--hidden} ${add_args[*]} ${types[*]--tf} \
         ${directories[*]:+^} ${directories[*]}"
 
-    fzf_search
+    readarray -t files < <(
+        (
+            [[ ${#extra_files[@]} -gt 0 ]] && $file_cmd | lscolors
+            $dir_cmd
+        ) | ${fzf_bin:-fzf} \
+            --query "$init_query" --prompt 'Files> ' \
+            --scheme path --exact --tiebreak "length,end,chunk,index" \
+            --delimiter / --nth -1,-2 \
+            --header-first --header "keybindings:C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(editor|print)" \
+            --expect "ctrl-s,ctrl-v,ctrl-o" \
+            --bind="alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)" \
+            --bind="ctrl-s:accept" \
+            --bind="ctrl-v:accept" \
+            --bind="ctrl-o:accept" \
+            --bind="enter:accept-or-print-query"
+    )
 
     [[ ${#files[@]} -gt 0 ]] && exec_action
 }

@@ -84,10 +84,14 @@ add_regular_directores() {
 }
 
 add_mark_directores() {
-    [[ -z $parse_toml ]] && source "${CUSTOM_HOME}/scripts/tools/parse-toml"
+    toml() {
+        toml_path="${CUSTOM_HOME}/scripts/tools/toml"
+        config_dir="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}"
+        $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
+    }
 
     for arg in "$@"; do
-        dirs=$(toml::gmark "$arg")
+        dirs=$(toml gmark "$arg")
         if [[ $? -ne 0 ]]; then
             exit 1
         fi

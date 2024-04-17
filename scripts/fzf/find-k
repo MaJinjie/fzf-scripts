@@ -11,12 +11,16 @@ help() {
     exit
 }
 
-main() {
-    [[ -z $parse_toml ]] && source "${CUSTOM_HOME}/scripts/tools/parse-toml"
+toml() {
+    toml_path="${CUSTOM_HOME}/scripts/tools/toml"
+    config_dir="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}"
+    $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
+}
 
+main() {
     [[ "$*" == *" -- "* ]] && args=$(echo "$*" | sed -nr 's/^.* -- (.*)$/\1/p')
     marks_args=$(echo "$*" | sed -rn 's/^([^-]*).*/\1/p')
-    list=($(toml::pmarks))
+    list=($(toml pmarks))
     typeset -a marks
     for abbr in $marks_args; do
         for ((i = 0; i < ${#abbr}; i++)); do
@@ -41,11 +45,7 @@ main() {
     done
 
     [[ ! "${marks[*]}" ]] && marks=(home)
-    if [[ "${cmd}" ]]; then
-        ${cmd} $args -- "${marks[@]}"
-    else
-        ${EDITOR} "$(toml::gmark "${marks[0]}")"
-    fi
+    ${cmd} $args -- "${marks[@]}"
 
 }
 
