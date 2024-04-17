@@ -63,9 +63,8 @@ main() {
         esac
     done
 
-    __${mode}_filter "$@" && [[ $exit_code -eq 130 ]] && return "$exit_code"
+    __${mode}_filter "$@" && [[ $exit_code -ne 130 ]] && echo "$directories"
 
-    echo "$directories"
     return "$exit_code"
 }
 

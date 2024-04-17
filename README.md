@@ -326,10 +326,10 @@ fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前�
 2. 从zoxide或其他目录源(目前没有实现其他目录源)中选择一个目录作为会话的起始目录，会话名命名规则如下：
    - 如果是家目录为前缀，`name=~<second to last directory>-<last directory>`
    - 否则就是根目录前缀，`name=/<second to last directory>-<last directory>`
-   - 考虑到来了只有一个目录的情况
-3. 支持以查询字符串作为会话名创建。
-4. 如果只有一个参数`-`，那么就会以当前目录创建会话。
-5. 考虑受到搜索条目的影响，不能很好得打印查询字符串，定义`alt-enter`为`print-query`。
+   - 考虑到了只有一个目录的情况
+3. 支持以查询字符串作为会话名创建(可以使用`alt-enter`准确无误触发，而`enter`只有当条目为0时才会触发 )。
+4. 如果只有一个参数`-`，那么就会直接以当前目录创建会话。
+5. 考虑受到搜索条目的影响，不能很好得打印查询字符串，定义`alt-enter`为`print-query`。同3。
 6. 实现了tmux会话的基本预览效果。
    预览效果如下:
 
@@ -341,6 +341,15 @@ fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前�
     -> 1: [79x41] [history 11/50000, 26362 bytes] %23
     -> 2: [79x41] [history 8/50000, 13955 bytes] %24 (active)
 
+   ```
+
+7. 如何将它放到`tmux.conf`中快速触发使用呢？ 将下面的内容复制到`tmux.conf` 中即可。
+   快捷键由前缀键触发，`TMUX_POPUP` 为了声明当前使用`tmux popup` 功能，使`session.sh`调用`fzf-filter`时传递`-P`参数，抑制`tmux`弹出。
+   可以根据自己的实际，修改路径。
+   ```tmux
+   bind -N "create or switch session" o {
+     popup -xC -yC -w70% -h80% -e TMUX_POPUP=1  -E "/home/mjj/.custom/scripts/tmux/session.sh"
+   }
    ```
 
 # 注意
