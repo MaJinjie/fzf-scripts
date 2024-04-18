@@ -4,38 +4,66 @@ action::null() {
     return 0
 }
 action::editor() {
-    if [[ ${#Results[@]} -eq 1 ]]; then
-        mkdir -p "$(dirname "${Results[0]}")" &> /dev/null
-        "${EDITOR}" "${Results[@]}" > /dev/tty < /dev/tty
-        return 0
-    fi
-    trigger_key=${Results[0]}
-    unset "Results[0]"
+    typeset trigger_key dir
+
+    trigger_key=$(grep -o -P "^(ctrl|alt)-\w$" < <(echo "$Results" | sed -n '1p'))
+    [[ $trigger_key ]] && Results=$(echo "$Results" | sed -n '1!p')
+    dir=$(echo "$Results" | sed -n '1p')
 
     if [[ "${trigger_key}" == "ctrl-f" ]]; then
-        "$CUSTOM_HOME/scripts/fzf/find-files" "${Results[@]}"
+        "$CUSTOM_HOME/scripts/fzf/find-files" $Flag_action ${Results}
     elif [[ "${trigger_key}" == "ctrl-g" ]]; then
-        "$CUSTOM_HOME/scripts/fzf/search-string" "${Results[@]}"
+        "$CUSTOM_HOME/scripts/fzf/search-string" $Flag_action ${Results}
     elif [[ "${trigger_key}" == "ctrl-s" ]]; then
-        tmux splitw "-bh" zsh -c "${EDITOR} ${Results[1]}"
+        tmux splitw -bh zsh -c "${EDITOR} $Flag_action $dir"
     elif [[ "${trigger_key}" == "ctrl-v" ]]; then
-        tmux splitw "-bv" zsh -c "${EDITOR} ${Results[1]}"
+        tmux splitw -bv zsh -c "${EDITOR} $Flag_action $dir"
     elif [[ "${trigger_key}" == "ctrl-o" ]]; then
-        "$CUSTOM_HOME/scripts/tmux/tmux-menu" "${Results[1]}"
+        "$CUSTOM_HOME/scripts/tmux/tmux-menu" $Flag_action "$dir"
     else
-        "${EDITOR}" "${Results[1]}"
+        mkdir -p "$(dirname "$dir")" &> /dev/null
+        "${EDITOR}" $Flag_action "$dir"
     fi
+    return $?
 }
 action::marks() {
-    $1 "${@:2}" -- "${Results[@]:-home}"
+    typeset prefix trigger_key cmd bin_name
+
+    prefix="$CUSTOM_HOME/scripts/fzf"
+    trigger_key=$(grep -o -P "^(ctrl|alt)-\w$" < <(echo "$Results" | sed -n '1p'))
+    [[ $trigger_key ]] && Results=$(echo "$Results" | sed -n '1!p')
+
+    bin_name=$(grep -o -P '^@\S+' <<< "$Flag_action")
+    if [[ -n "${bin_name}" ]]; then
+        Flag_action="${Flag_action/#${bin_name} /}"
+        bin_name="${bin_name/#@/}"
+        [[ -x "$prefix/$bin_name" ]] && cmd="$prefix/$bin_name" || cmd="$bin_name"
+    fi
+
+    if [[ "${trigger_key}" == "ctrl-f" ]]; then
+        [[ -x "$prefix/find-files" ]] && cmd="$prefix/find-files"
+    elif [[ "${trigger_key}" == "ctrl-g" ]]; then
+        [[ -x "$prefix/find-files" ]] && cmd="$prefix/search-string"
+    else
+        if [[ -z ${bin_name} ]]; then
+            echo "executable file is not exists" > /dev/tty
+            exit 1
+        fi
+        [[ ! -x "$cmd" ]] && (
+            echo "$cmd is not a executable file" > /dev/tty
+            exit 1
+        )
+    fi
+    $cmd $Flag_action -- $Results
+    return $?
 }
 
 env::null() {
     echo ""
 }
 env::editor() {
-    action_f="execute($CUSTOM_HOME/scripts/fzf/find-files ${Flag_nopopup:+-P} {+})"
-    action_g="execute($CUSTOM_HOME/scripts/fzf/search-string ${Flag_nopopup:+-P} {+})"
+    action_f="execute($CUSTOM_HOME/scripts/fzf/find-files ${Flag_env} {+})"
+    action_g="execute($CUSTOM_HOME/scripts/fzf/search-string ${Flag_env} {+})"
     echo "
     --header-first
     --header \"keybindings: C-f(find files), C-g(grep string), C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(editor|print)\"
@@ -49,14 +77,32 @@ env::editor() {
     --bind=\"enter:accept-or-print-query\" 
     "
 }
+env::marks() {
+    echo "
+    --header-first
+    --header \"keybindings: C-f(find files), C-g(grep string), Enter(editor)\"
+    --expect \"ctrl-f,ctrl-g\"
+    --bind=\"ctrl-f:accept\"
+    --bind=\"ctrl-g:accept\"
+    --bind=\"enter:accept\" 
+    "
+}
+
+help() {
+    echo "Usage: script_name MODE [OPTIONS]
+        -P no-popup 
+        -a args. pass to action
+        -A args. pass to env
+    "
+}
 
 main() {
     [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
-    typeset Flag_nopopup Flag_P Flag_before_args Flag_after_args Results
-    typeset Env Action Args
+    typeset Flag_P Flag_action Flag_env Results
+    typeset Env Action Exit_code
 
-    args=$(getopt -o PA:a: -l no-popup: -n "$0" -- "$@")
+    args=$(getopt -o Pa:A: -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
@@ -66,16 +112,12 @@ main() {
             Flag_P=1
             shift
             ;;
-        --no-popup)
-            Flag_nopopup=1
-            shift
-            ;;
         -a)
-            Flag_after_args="$2"
+            Flag_action+="$2 "
             shift 2
             ;;
         -A)
-            Flag_before_args="$2"
+            Flag_env+="$2 "
             shift 2
             ;;
         --)
@@ -94,16 +136,21 @@ main() {
         Env=editor Action=editor
         ;;
     marks)
-        Action="marks"
-        [[ ! $Flag_before_args =~ "^/" ]] && prefix="$CUSTOM_HOME/scripts/fzf/"
-        Args="$prefix$Flag_before_args $Flag_after_args"
+        Env=marks Action=marks
         ;;
     esac
 
-    readarray -t Results < <(FILTER_FZF_DEFAULT_OPTS="$(env::${Env:-null})" fzf-filter "$MODE" ${Flag_P:+-P} "$@")
-
-    [[ ${#Results[@]} -gt 0 ]] && action::${Action:-null} "${Args:-}"
+    Results=$( (
+        FILTER_FZF_DEFAULT_OPTS="$(env::${Env:-null})" fzf-filter "$MODE" ${Flag_P:+-P} "$@"
+        Exit_code=$?
+    ) | grep -v "^$")
+    [[ $Exit_code -ne 130 ]] && [[ ${Results} ]] && action::${Action:-null}
 }
+
+if [[ -z $1 && $1 == help ]]; then
+    help > /dev/tty
+    exit 0
+fi
 
 if [[ -z $1 || " $(fzf-filter list) " != *"$1"* ]]; then
     echo "$1 is invalid"

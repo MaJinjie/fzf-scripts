@@ -45,10 +45,11 @@ __marks_filter() {
     $FZF_DEFAULT_OPTS
     --exact
     --tiebreak \"length,begin,chunk,index\"
+    $FILTER_FZF_DEFAULT_OPTS
     "
 
     list=$(eval "$cmd")
-    if ((0)) && [[ $# -eq 0 ]]; then
+    if [[ $# -eq 0 ]]; then
         Results=$(FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} <<< "$list")
         Exit_code=$?
     else
