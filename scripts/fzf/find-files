@@ -1,169 +1,115 @@
 #!/bin/env bash
 
+# 1. 能够解析常用的参数
+# 2. 接受目录或文件
+# 3. (取消)可从标准输入中接受目录和文件
+# 4. (取消)去除掉 -- 目录标志（太麻烦，因此拆分为组合命令实现），转为使用标准输入接受
+
 help() {
-    >&2 echo 'usage: ff [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
+    >&2 echo 'usage: ff [OPTIONS] [DIRECTORIES or Files]
 
     OPTIONS:
         -t char set, file types dfxlspebc
         -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
         -D int, max-depth
-        -h bool, cancel --hidden
+        -H bool, --hidden
         -I bool, --no-ignore
-        -q string, init_query
         -P no-popup
 
-        --
-        add marks ...
+        --input pipe to pass
+
     KEYBINDINGS:
         ctrl-s horizontal direction splitw
         ctrl-v vertical direction splitw
-        ctrl-x transform-query:echo $(dirname {})/ 
         alt-e fzf-tmux-menu splitw
+        alt-enter open dirname file
     '
-    exit
 }
 
-add_regular_directores() {
-    for arg in "$@"; do
-        if [[ -d "$arg" ]]; then
-            directories+=("$arg")
+__split_dirs_and_files() {
+    while read -d " " -r entry; do
+        if [[ -d $entry ]]; then
+            Directories+="$entry "
         else
-            echo "$arg not a directory"
-            exit 1
+            Files+="$entry "
         fi
-    done
-
+    done <&0
 }
 
-add_mark_directores() {
-    toml() {
-        toml_path="${CUSTOM_HOME}/scripts/tools/toml"
-        config_dir="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}"
-        $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
-    }
+__exec_action() {
+    typeset trigger_key file
 
-    for arg in "$@"; do
-        dirs=$(toml gmark "$arg")
-        if [[ $? -ne 0 ]]; then
-            exit 1
-        fi
-        for dir in ${dirs}; do
-            if [[ -d $dir ]]; then
-                directories+=("$dir")
-            else
-                extra_files+=("$dir")
-            fi
-        done
-    done
-}
-
-fzf_search() {
-    readarray -t files < <(
-        $cmd | ${fzf_bin:-fzf} \
-            --query "$init_query" --prompt 'Files> ' \
-            --scheme path --exact --tiebreak "length,end,chunk,index" \
-            --delimiter / --nth -1,-2 \
-            --header-first --header "keybindings:C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(editor|print)" \
-            --expect "ctrl-s,ctrl-v,ctrl-o" \
-            --bind="alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)" \
-            --bind="ctrl-s:accept" \
-            --bind="ctrl-v:accept" \
-            --bind="ctrl-o:accept" \
-            --bind="enter:accept-or-print-query"
-    )
-}
-
-exec_action() {
-    if [[ ${#files[@]} -eq 1 ]]; then
-        mkdir -p "$(dirname "${files[0]}")" &> /dev/null
-        "${EDITOR}" "${files[@]}" > /dev/tty < /dev/tty
-        return 0
-    fi
-
-    trigger_key=${files[0]}
-    unset "files[0]"
+    trigger_key=$(grep -o -P "^(ctrl|alt)-\w+$" < <(echo "$Results" | sed -n '1p'))
+    [[ $trigger_key ]] && Results=$(echo "$Results" | sed -n '1!p')
+    file=$(echo "$Results" | sed -n '1p')
+    Results=$(tr '\n' ' ' <<< "$Results")
 
     if [[ "${trigger_key}" == "ctrl-s" ]]; then
-        tmux splitw "-bh" zsh -c "${EDITOR} ${files[*]}"
+        tmux splitw -bv zsh -c "${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-v" ]]; then
-        tmux splitw "-bv" zsh -c "${EDITOR} ${files[*]}"
+        tmux splitw -bh zsh -c "${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-o" ]]; then
-        "$CUSTOM_HOME/scripts/tmux/tmux-menu" $(realpath "${files[@]}")
+        "$CUSTOM_HOME/scripts/tmux/tmux-menu" $(realpath $Results)
+    elif [[ "${trigger_key}" == "alt-enter" ]]; then
+        "${EDITOR}" "$(dirname $file)" > /dev/tty < /dev/tty
     else
-        "${EDITOR}" "${files[@]}" > /dev/tty < /dev/tty
+        ${EDITOR} $Results > /dev/tty < /dev/tty
     fi
 }
 
 main() {
-    [[ $# -gt 0 && "$1" == help ]] && help
-    [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+    typeset flag_P flag_F flag_max_depth flag_types flag_other_args
+    typeset Directories Files
 
-    # global
-    typeset -a directories extra_files files
-    typeset dir_cmd file_cmd
-
-    # args
-    typeset -a types left_args right_args add_args
-    typeset max_depth=8 hidden=true
-
-    ((i = 1))
-    while [[ i -le $# && "${!i}" != "--" ]]; do
-        left_args+=("${!i}")
-        ((i++))
-    done
-    right_args=("${@:$((i + 1))}")
-
-    args=$(getopt -o hID:t:T:q:e:E:P -n "$0" -- "${left_args[@]}")
-    if [[ $? != 0 ]]; then
-        echo "getopt parse error"
-        exit 1
-    fi
+    args=$(getopt -o HID:t:T:e:E:PF -l help -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
         case "$1" in
+        --help)
+            help
+            exit 0
+            ;;
+        -F)
+            flag_F=1
+            shift
+            ;;
         -P)
-            fzf_bin=
+            flag_P=1
             shift
             ;;
         -t)
-            ((i = 0))
-            while [[ $i -lt ${#2} ]]; do
-                ((i++))
-                types+=("-t$(echo "$2" | cut -c $i)")
+            for ((i = 0; i < ${#2}; ++i)); do
+                flag_types+="-t${2:$i:1} "
             done
             shift 2
             ;;
         -T)
-            add_args+=("--changed-after=$2")
+            flag_other_args+="--changed-after=$2 "
             shift 2
             ;;
-        -h)
-            unset hidden
+        -H)
+            flag_other_args+="--hidden "
             shift
             ;;
         -I)
-            add_args+=("--no-ignore")
+            flag_other_args+="--no-ignore "
             shift
             ;;
         -D)
-            max_depth=$2
-            shift 2
-            ;;
-        -q)
-            init_query=$2
+            flag_max_depth=$2
             shift 2
             ;;
         -e)
-            while read -r ext; do
-                add_args+=("--extension=$ext")
-            done < <(echo "$2" | tr ',' '\n')
+            while read -d "," -r ext; do
+                flag_other_args+="--extension=$ext "
+            done <<< "$2,"
             shift 2
             ;;
         -E)
-            while read -r glob; do
-                add_args+=("--exclude=$glob")
-            done < <(echo "$2" | tr ',' '\n')
+            while read -d "," -r glob; do
+                flag_other_args+="--exclude=$glob "
+            done <<< "$2,"
             shift 2
             ;;
         --)
@@ -177,31 +123,41 @@ main() {
         esac
     done
 
-    [[ $# -gt 0 ]] && add_regular_directores "$@"
-    [[ ${#right_args} -gt 0 ]] && add_mark_directores "${right_args[@]}"
+    [[ -v TMUX && -z $flag_P ]] && command -v fzf-tmux &> /dev/null &&
+        if [[ $flag_F ]]; then fzf_bin="fzf-tmux -p100%,100%"; else fzf_bin="fzf-tmux $FZF_TMUX_OPTS"; fi
 
-    file_cmd="printf %s\n ${extra_files[*]}"
-    dir_cmd="command fd --color=always --follow --max-depth=${max_depth} \
-        ${hidden:+--hidden} ${add_args[*]} ${types[*]--tf} \
-        ${directories[*]:+^} ${directories[*]}"
+    typeset dir_cmd file_cmd opts Results
 
-    readarray -t files < <(
+    [[ $* ]] && __split_dirs_and_files <<< "$* "
+
+    file_cmd="printf %s\n $Files"
+    dir_cmd="command fd --color=always --follow --max-depth=${flag_max_depth:-6} \
+        ${flag_types--tf} $flag_other_args ${Directories:+^} ${Directories}"
+
+    opts="
+    $FZF_DEFAULT_OPTS
+    --prompt 'Files> '
+    --exit-0
+    --scheme path --exact --tiebreak \"length,end,chunk,index\"
+    --delimiter / --nth -1,-2
+    --header-first --header \"keybindings:C-s, C-v, C-o, A-e, A-enter, Enter\"
+    --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
+    --bind=\"alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)\"
+    --bind=\"ctrl-s:accept\"
+    --bind=\"ctrl-v:accept\"
+    --bind=\"ctrl-o:accept\"
+    --bind=\"enter:accept\"
+    --bind=\"alt-enter:accept\"
+    "
+
+    Results=$(
         (
-            [[ ${#extra_files[@]} -gt 0 ]] && $file_cmd | lscolors
-            $dir_cmd
-        ) | ${fzf_bin:-fzf} \
-            --query "$init_query" --prompt 'Files> ' \
-            --scheme path --exact --tiebreak "length,end,chunk,index" \
-            --delimiter / --nth -1,-2 \
-            --header-first --header "keybindings:C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(editor|print)" \
-            --expect "ctrl-s,ctrl-v,ctrl-o" \
-            --bind="alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)" \
-            --bind="ctrl-s:accept" \
-            --bind="ctrl-v:accept" \
-            --bind="ctrl-o:accept" \
-            --bind="enter:accept-or-print-query"
+            [[ $Files ]] && $file_cmd | lscolors
+            [[ $Directories || -z $Files ]] && $dir_cmd
+        ) | (
+            FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf}
+        ) | grep -v "^$"
     )
-
-    [[ ${#files[@]} -gt 0 ]] && exec_action
+    [[ ${Results} ]] && __exec_action
 }
 main "$@"

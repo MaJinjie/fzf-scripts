@@ -6,7 +6,7 @@ action::null() {
 action::editor() {
     typeset trigger_key dir
 
-    trigger_key=$(grep -o -P "^(ctrl|alt)-\w$" < <(echo "$Results" | sed -n '1p'))
+    trigger_key=$(grep -o -P "^(ctrl|alt)-\w+$" < <(echo "$Results" | sed -n '1p'))
     [[ $trigger_key ]] && Results=$(echo "$Results" | sed -n '1!p')
     dir=$(echo "$Results" | sed -n '1p')
 
@@ -30,7 +30,7 @@ action::marks() {
     typeset prefix trigger_key cmd bin_name
 
     prefix="$CUSTOM_HOME/scripts/fzf"
-    trigger_key=$(grep -o -P "^(ctrl|alt)-\w$" < <(echo "$Results" | sed -n '1p'))
+    trigger_key=$(grep -o -P "^(ctrl|alt)-\w+$" < <(echo "$Results" | sed -n '1p'))
     [[ $trigger_key ]] && Results=$(echo "$Results" | sed -n '1!p')
 
     bin_name=$(grep -o -P '^@\S+' <<< "$Flag_action")
@@ -54,7 +54,7 @@ action::marks() {
             exit 1
         )
     fi
-    $cmd $Flag_action -- $Results
+    $cmd $Flag_action $Results
     return $?
 }
 

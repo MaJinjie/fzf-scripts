@@ -39,7 +39,7 @@ __files_filter() {
     Exit_code=$?
 }
 __marks_filter() {
-    typeset opts
+    typeset opts marks
 
     opts="
     $FZF_DEFAULT_OPTS
@@ -50,7 +50,7 @@ __marks_filter() {
 
     list=$(eval "$cmd")
     if [[ $# -eq 0 ]]; then
-        Results=$(FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} <<< "$list")
+        marks=$(FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} <<< "$list")
         Exit_code=$?
     else
         for abbr in "$@"; do
@@ -63,13 +63,16 @@ __marks_filter() {
                 printf "%s is not exists\n\n" abbr > /dev/tty
                 return 130
             fi
-            [[ -n ${Results} ]] && Results+="\n"
-            Results+="$mark"
+            marks+="$mark "
             filter_query=
             list="${list/${mark}/}"
         done
         Exit_code=0
     fi
+
+    [[ $Exit_code -ne 130 ]] && for mark in $marks; do
+        Results+="$(__toml gmark $mark) "
+    done
 }
 
 main() {
