@@ -1,218 +1,111 @@
 #!/bin/env bash
 
 help() {
-    >&2 echo 'usage: ss [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
+    >&2 echo 'usage: ss [OPTIONS] [init_query] [DIRECTORIES or Files]
 
     OPTIONS:
-        -t bool types files,  Comma-separated
+        -t file types,  Comma-separated
+        -T file types(not),  Comma-separated
         -D int max-depth
-        -h bool cancel --hidden
+        -H bool --hidden
         -I bool --no-ignore 
-        -q char*|string init_query
+        -q first param is not a init_query
+        -w world regex
+        -u[uu]
         -P no-popup 
         -F full-window
 
-        --
-        add marks ...
     KEYBINDINGS:
         ctrl-s horizontal direction splitw
         ctrl-v vertical direction splitw
         alt-e fzf-tmux-menu splitw
     '
-    exit
-
 }
-define_env() {
-    regex_separate="${CUSTOM_REGEX_SEPARATE:-&}"
-    iglob_separate="${CUSTOM_IGLOB_SEPARATE:---}"
-    connect_regex="${CUSTOM_CONNECT_REGEX:-.*?}"
-
-    transform_iglob="
-    setopt extended_glob
-    fzf_query=\${\${FZF_QUERY## ##}%% ##}
-    let i=len=flag=0
-    while [[ i -lt \${#fzf_query} ]]; do
-        if [[ \${fzf_query:\$i:${#regex_separate}} == '${regex_separate}' || \${fzf_query:\$i:${#iglob_separate}} == '${iglob_separate}' ]]; then
-            if [[ flag -eq 0 ]]; then
-                append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-                search_str+=\"\${append_str:+\${search_str:+${connect_regex}}}\$append_str\"
-            else
-                for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
-                do
-                    case \$iglob_entry in 
-                    *)
-                        iglob_str+=\"'--iglob=\$iglob_entry' \"
-                        ;;
-                    esac
-                done
-            fi
-            [[ \${fzf_query:\$i:${#regex_separate}} == '${regex_separate}' ]] && let flag=0,len=0,i+=${#regex_separate} 
-            [[ \${fzf_query:\$i:${#iglob_separate}} == '${iglob_separate}' ]] && let flag=1,len=0,i+=${#iglob_separate}
+__split_dirs_and_files() {
+    while read -d " " -r entry; do
+        if [[ -d $entry ]]; then
+            Directories+="$entry "
         else
-            let len++,i++
+            Files+="$entry "
         fi
-    done
-    if [[ len -gt 0 ]]; then
-        if [[ flag -eq 0 ]]; then
-            append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-            search_str+=\"\${append_str:+\${search_str:+${connect_regex}}}\$append_str\"
-        else
-            for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
-            do
-                case \$iglob_entry in 
-                *)
-                    iglob_str+=\"'--iglob=\$iglob_entry' \"
-                    ;;
-                esac
-            done
-        fi
-    fi
-    echo \"reload:sleep 0.1;${rg_prefix} \${iglob_str} '\$search_str' ${directories[*]} || true\"
-    "
+    done <&0
 }
 
-add_regular_directores() {
-    for arg in "$@"; do
-        if [[ -d "$arg" ]]; then
-            directories+=("$arg")
-        else
-            echo "$arg not a directory"
-            exit 1
-        fi
-    done
+__exec_action() {
+    typeset trigger_key file line_number
 
-}
+    trigger_key=$(grep -o -P "^(ctrl|alt)-\w+$" < <(echo "$Results" | sed -n '1p'))
+    [[ $trigger_key ]] && Results=$(echo "$Results" | sed -n '1!p')
+    file=$(echo "$Results" | cut -d: -f 1)
+    line_number=$(echo "$Results" | cut -d: -f 2)
 
-add_mark_directores() {
-    toml() {
-        toml_path="${CUSTOM_HOME}/scripts/tools/toml"
-        config_dir="${CUSTOM_MARKS_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/custom}"
-        $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
-    }
-
-    for arg in "$@"; do
-        dirs=$(toml gmark "$arg")
-        if [[ $? -ne 0 ]]; then
-            exit 1
-        fi
-        for directory in ${dirs}; do
-            if [[ "$directory" == ${PWD}* ]]; then
-                directories+=("$(realpath --no-symlinks --relative-to=${PWD} $directory)")
-            else
-                directories+=("$directory")
-            fi
-        done
-    done
-}
-
-fzf_search() {
-    if ! define_env; then
-        echo "define_env error"
-        exit 1
-    fi
-
-    file_r="/tmp/rg$$"
-    file_f="/tmp/fzf$$"
-    trap "command rm -f  ${file_f} ${file_r}" EXIT SIGINT SIGTERM
-
-    # +m -> -m multi select
-    readarray -t files < <(
-        ${fzf_bin:-fzf} --disabled +m \
-            --query "$init_query" --prompt "Rg> " \
-            --exact \
-            --bind "start:unbind(?)+reload:${rg_prefix} {q} ${directories[*]}" \
-            --bind "change:transform:$transform_iglob" \
-            --bind "ctrl-t:transform:[[ ! \$FZF_PROMPT =~ Rg ]] &&
-            echo \"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:echo \{q} > $file_f; cat $file_r\" ||
-            echo \"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:echo \{q} > $file_r; cat $file_f\"" \
-            --delimiter : \
-            --header-first --header "keybindings: C-t(toggle fzf|rg), C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor)," \
-            --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}' \
-            --preview-window 'default:right:60%:~1:+{2}+3/2:border-left' \
-            --expect "ctrl-s,ctrl-v,ctrl-o" \
-            --bind="alt-e:execute(${EDITOR} {1} +{2} > /dev/tty < /dev/tty)" \
-            --bind="ctrl-s:accept" \
-            --bind="ctrl-v:accept" \
-            --bind="ctrl-o:accept" \
-            --bind="enter:accept"
-    )
-}
-
-exec_action() {
-    trigger_key=${files[0]}
-    unset "files[0]"
-
-    readarray -t transform_files < <(printf "%s\n" "${files[@]}" | awk 'BEGIN{FS=":"}{printf("%s +%s\n", $1, $2)}')
     if [[ "${trigger_key}" == "ctrl-s" ]]; then
-        tmux splitw "-bh" zsh -c "${EDITOR} ${transform_files[*]}"
+        tmux splitw -bv zsh -c "${EDITOR} $file +$line_number"
     elif [[ "${trigger_key}" == "ctrl-v" ]]; then
-        tmux splitw "-bv" zsh -c "${EDITOR} ${transform_files[*]}"
+        tmux splitw -bh zsh -c "${EDITOR} $file +$line_number"
     elif [[ "${trigger_key}" == "ctrl-o" ]]; then
-        for ((i = 0; i < ${#transform_files[@]}; ++i)); do
-            read -r file_path file_line <<< "${transform_files[$i]}"
-            transform_files[$i]="$(realpath ${file_path}) ${file_line}"
-        done
-        "$CUSTOM_HOME/scripts/tmux/tmux-menu" "${transform_files[@]}"
+        "$CUSTOM_HOME/scripts/tmux/tmux-menu" $(realpath $file) +$line_number
+    elif [[ "${trigger_key}" == "alt-enter" ]]; then
+        "${EDITOR}" "$(dirname $file)" > /dev/tty < /dev/tty
     else
-        eval "${EDITOR} ${transform_files[*]} > /dev/tty < /dev/tty"
+        ${EDITOR} $file +$line_number > /dev/tty < /dev/tty
     fi
 }
+
 main() {
-    [[ $# -gt 0 && "$1" == help ]] && help
-    [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux -p100%,90%"
+    typeset flag_P flag_F flag_q flag_max_depth flag_other_args
 
-    # global
-    typeset -a directories files
-    typeset transform_iglob rg_prefix
-
-    # args
-    typeset -a types left_args right_args add_args
-    typeset init_query max_depth=8 hidden=true
-
-    ((i = 1))
-    while [[ i -le $# && "${!i}" != "--" ]]; do
-        left_args+=("${!i}")
-        ((i++))
-    done
-    right_args=("${@:$((i + 1))}")
-
-    args=$(getopt -o hID:t:q:PF -n "$0" -- "${left_args[@]}")
-    if [[ $? != 0 ]]; then
-        echo "getopt parse error"
-        exit 1
-    fi
+    args=$(getopt -o D:t:T:u::qwHIPF -l help -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
         case "$1" in
+        --help)
+            help
+            exit 0
+            ;;
+        -q)
+            flag_q=1
+            shift
+            ;;
+        -w)
+            flag_other_args+="-w "
+            shift
+            ;;
+        -u)
+            flag_other_args+="-u$2 "
+            shift 2
+            ;;
         -F)
-            fzf_bin="fzf-tmux -p100%,100%"
+            flag_F=1
             shift
             ;;
         -P)
-            fzf_bin=
+            flag_P=1
             shift
             ;;
-        -q)
-            init_query="$2"
-            shift 2
-            ;;
         -t)
-            while read -r type; do
-                types+=("--type=$type")
-            done < <(echo "$2" | tr ',' '\n')
+            while read -d "," -r type; do
+                flag_other_args+="--type=$type "
+            done <<< "$2,"
             shift 2
             ;;
-        -h)
-            unset hidden
+        -T)
+            while read -d "," -r type; do
+                flag_other_args+="--type-not=$type "
+            done <<< "$2,"
+            shift 2
+            ;;
+        -H)
+            flag_other_args+="--hidden "
             shift
             ;;
         -I)
-            add_args+=("--no-ignore")
+            flag_other_args+="--no-ignore "
             shift
             ;;
         -D)
-            max_depth=$2
+            flag_max_depth=$2
             shift 2
             ;;
         --)
@@ -226,15 +119,72 @@ main() {
         esac
     done
 
-    [[ $# -gt 0 ]] && add_regular_directores "$@"
-    [[ ${#right_args} -gt 0 ]] && add_mark_directores "${right_args[@]}"
+    [[ -v TMUX && -z $flag_P ]] && command -v fzf-tmux &> /dev/null &&
+        if [[ $flag_F ]]; then fzf_bin="fzf-tmux -p100%,100%"; else fzf_bin="fzf-tmux $FZF_GREP_TMUX_OPTS"; fi
 
-    rg_prefix="command rg --line-number --no-heading --color=always --smart-case \
-          ${types[*]:-} ${add_args[*]:-} ${hidden:+--hidden} --max-depth=${max_depth}"
+    typeset Directories Files Results
+    typeset cmd init_query opts file_r file_f
+    typeset transform_change transform_toggle init_bind
 
-    fzf_search
+    if [[ -z $flag_q ]]; then
+        init_query=$1
+        shift
+    fi
+    [[ $* ]] && __split_dirs_and_files <<< "$* "
 
-    [[ ${#files[@]} -gt 0 ]] && exec_action
+    cmd="command rg --line-number --no-heading --color=always --smart-case \
+          --max-depth=${flag_max_depth:-6} ${flag_other_args}"
+    file_r=/tmp/f-$$
+    file_f=/tmp/r-$$
+    trap "command rm -f $file_r $file_f" EXIT SIGINT SIGTERM
+
+    transform_change="
+    setopt extended_glob
+    typeset args files
+    [[ \$FZF_QUERY == *--* ]] && for elem in \${(s/ /)\${FZF_QUERY##*--}}; do 
+        case \$elem in
+            H) args+=\\\"--hidden \\\"
+            ;;
+            I) args+=\\\"--no-ignore \\\"
+            ;;
+            *) args+=\\\"'--iglob=\$elem' \\\"
+            ;;
+        esac
+    done
+    echo \\\"reload:sleep 0.1; ${cmd} \$args '\${FZF_QUERY% ##--*}' ${Directories} ${Files} || true\\\"
+    "
+    transform_toggle="
+    if [[ ! \$FZF_PROMPT =~ Rg ]]; then
+        echo \\\"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:echo -E \\\{q} > $file_f; cat $file_r\\\"
+    else
+        echo \\\"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:echo -E \\\{q} > $file_r; cat $file_f\\\"
+    fi
+    "
+    init_bind="--bind=\"start:reload:${cmd} \{q} ${Directories} ${Files}\""
+
+    opts="
+    $FZF_DEFAULT_OPTS
+    --disabled +m
+    --query \"$init_query\" --prompt \"Rg> \"
+    --exact
+    ${init_query:+${init_bind}}
+    --bind \"change:transform:$transform_change\"
+    --bind \"ctrl-t:transform:$transform_toggle\"
+    --delimiter :
+    --header \"keybindings: C-t(toggle fzf|rg), C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor),\"
+    --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
+    --preview-window 'default:right:60%:~1:+{2}+3/2:border-left'
+    --expect \"ctrl-s,ctrl-v,ctrl-o\"
+    --bind=\"alt-e:execute(${EDITOR} {1} +{2} > /dev/tty < /dev/tty)\"
+    --bind=\"ctrl-s:accept\"
+    --bind=\"ctrl-v:accept\"
+    --bind=\"ctrl-o:accept\"
+    --bind=\"enter:accept\"
+    "
+
+    Results=$(: | FZF_DEFAULT_OPTS=$opts ${fzf_bin:-fzf} | grep -v "^$")
+
+    [[ $Results ]] && __exec_action
 }
 main "$@"
 # parse_directory_mark "$@"
