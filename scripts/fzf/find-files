@@ -260,6 +260,7 @@ main() {
             ((!Flag_file || Flag_directory)) && $dir_cmd
         ) | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | grep -v "^$"
     )
+    [[ $exit_code -ne 130 && ${Results} ]] && __exec_action
 
     [[ ${Results} ]] && if [[ $flag_O ]]; then echo "$Results"; else __exec_action; fi
 }
