@@ -43,7 +43,7 @@ action::marks() {
     if [[ "${trigger_key}" == "ctrl-f" ]]; then
         [[ -x "$prefix/find-files" ]] && cmd="$prefix/find-files"
     elif [[ "${trigger_key}" == "ctrl-g" ]]; then
-        [[ -x "$prefix/find-files" ]] && cmd="$prefix/search-string"
+        [[ -x "$prefix/search-string" ]] && cmd="$prefix/search-string"
     else
         if [[ -z ${bin_name} ]]; then
             echo "executable file is not exists" > /dev/tty
