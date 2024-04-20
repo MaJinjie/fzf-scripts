@@ -2,40 +2,111 @@
 
 # 1. 能够解析常用的参数
 # 2. 接受目录或文件
-# 3. (取消)可从标准输入中接受目录和文件
-# 4. (取消)去除掉 -- 目录标志（太麻烦，因此拆分为组合命令实现），转为使用标准输入接受
+# 3. 尽可能地解释用户传入的参数
 
 help() {
     >&2 echo 'usage: ff [OPTIONS] [DIRECTORIES or Files]
 
     OPTIONS:
+        -g glob-based search
+        -p full-path
         -t char set, file types dfxlspebc
         -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
-        -D int, max-depth
+        -d int, max-depth
         -H bool, --hidden
         -I bool, --no-ignore
         -P no-popup
+        -F full-window
+        -e extensions
+        -E exclude glob pattern
+        -O output to stdout
+        -q Cancel the first n matching file names (Optional default 1)
 
-        --input pipe to pass
+        --help 
+        --split Explain the parameters passed in by the user as much as possible \
+            priority: file_or_directory > depth > type > depth_and_type > change_time > extensions > pattern (Optional default all)
+        --extra-args pass -> fd
 
     KEYBINDINGS:
         ctrl-s horizontal direction splitw
         ctrl-v vertical direction splitw
-        alt-e fzf-tmux-menu splitw
+        ctrl-o fzf-tmux-menu splitw
+        alt-e subshell editor
         alt-enter open dirname file
     '
 }
 
-__split_dirs_and_files() {
+__split() {
     while read -d " " -r entry; do
-        if [[ -d $entry ]]; then
-            Directories+="$entry "
-        else
-            Files+="$entry "
-        fi
+        # echo "|$entry|"
+        # 1 解释为目录和文件
+        __split_directory_or_file && continue
+        # 2 解释为最大和最小深度
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth "* ]] && __split_depth && continue
+        # 3 解释为文件类型
+        [[ $flag_split -eq 1 || " $flag_split " == *" type "* ]] && __split_type && continue
+        # 4 解释为文件类型和深度
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth_and_type "* ]] && __split_depth_and_type && continue
+        # 5 解释为时间
+        [[ $flag_split -eq 1 || " $flag_split " == *" changed_time "* ]] && __split_changed_time && continue
+        # 6 解释为文件拓展名
+        [[ $flag_split -eq 1 || " $flag_split " == *" extension "* ]] && __split_extension && continue
+        # 7 解释为正则或通配模式
+        [[ $flag_split -eq 1 || " $flag_split " == *" pattern "* ]] && __split_pattern || exit 1
     done <&0
+    set +x
+}
+__split_pattern() {
+    [[ $Pattern ]] && {
+        echo "$entry error, pattern is exists" &> /dev/tty
+        return 1
+    }
+    Pattern=$entry
+}
+__split_depth_and_type() {
+    [[ "$entry" =~ ^[[:digit:]dfx]{1,4}$ ]] && [[ "$entry" == "$(tr -s 'dfx' <<< "$entry")" ]] && for ((i = 0; i < ${#entry}; ++i)); do
+        char="${entry:$i:1}"
+        [[ $char =~ [[:digit:]] ]] && flag_max_depth=$char || flag_types+="-t$char "
+    done || return 1
+
+}
+__split_type() {
+    [[ "$entry" =~ ^[dfx]{1,3}$ ]] && [[ "$entry" == "$(tr -s 'dfx' <<< "$entry")" ]] && for ((i = 0; i < ${#entry}; ++i)); do
+        flag_types+="-t${entry:$i:1} "
+    done || return 1
+}
+__split_depth() {
+    [[ "$entry" =~ ^[[:digit:]]{2}$ ]] && {
+        flag_other_args+="--min-depth=${entry:0:1}"
+        flag_max_depth=${entry: -1:1}
+    } || return 1
+}
+__split_changed_time() {
+    { [[ "$entry" =~ ^[[:digit:]]+([mhwMy]|day[s]?)$ ]] ||
+        [[ "$entry" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}$ ]] ||
+        [[ "$entry" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:blank:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}$ ]]; } &&
+        flag_other_args+="--changed-after=$entry" || return 1
+}
+__split_extension() {
+    [[ "$entry" =~ ,$ ]] && while read -d "," -r ext; do
+        flag_other_args+="--extension=$ext "
+    done <<< "$entry"
+}
+__split_directory_or_file() {
+    { [[ ! -e "$entry" ]] || ((flag_q-- > 0)); } && return 1
+    [[ -d $entry ]] && Directories+="$entry " || Files+="$entry "
 }
 
+__filter_files() {
+    Files=
+    while read -d " " -r file; do
+        pattern_file=$(basename "$file")
+        ((flag_full_path)) && pattern_file=$file
+        # shellcheck disable=SC2053
+        [[ $flag_g && "$pattern_file" == $Pattern ]] && Files+="$file "
+        [[ -z $flag_g && "$pattern_file" =~ $Pattern ]] && Files+="$file "
+    done <&0
+}
 __exec_action() {
     typeset trigger_key file
 
@@ -49,19 +120,21 @@ __exec_action() {
     elif [[ "${trigger_key}" == "ctrl-v" ]]; then
         tmux splitw -bh zsh -c "${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-o" ]]; then
+        # shellcheck disable=SC2046
+        # shellcheck disable=SC2086
         "$CUSTOM_HOME/scripts/tmux/tmux-menu" $(realpath $Results)
     elif [[ "${trigger_key}" == "alt-enter" ]]; then
-        "${EDITOR}" "$(dirname $file)" > /dev/tty < /dev/tty
+        "${EDITOR}" "$(dirname "$file")" > /dev/tty < /dev/tty
     else
+        # shellcheck disable=SC2086
         ${EDITOR} $Results > /dev/tty < /dev/tty
     fi
 }
 
 main() {
-    typeset flag_P flag_F flag_max_depth flag_types flag_other_args
-    typeset Directories Files
+    typeset flag_P flag_F flag_O flag_q flag_full_path flag_split flag_g flag_max_depth flag_types flag_other_args
 
-    args=$(getopt -o HID:t:T:e:E:PF -l help -n "$0" -- "$@")
+    args=$(getopt -o HId:t:T:e:E:PFOgpq:: -l help,split::,extra-args: -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
@@ -69,6 +142,31 @@ main() {
         --help)
             help
             exit 0
+            ;;
+        --split)
+            flag_split=${2:-1}
+            shift 2
+            ;;
+        --extra-args)
+            flag_other_args+="$2 "
+            shift 2
+            ;;
+        -q)
+            flag_q=${2:-1}
+            shift 2
+            ;;
+        -p)
+            flag_full_path=1
+            shift
+            ;;
+        -g)
+            flag_g=1
+            flag_other_args+="--glob "
+            shift
+            ;;
+        -O)
+            flag_O=1
+            shift
             ;;
         -F)
             flag_F=1
@@ -96,7 +194,7 @@ main() {
             flag_other_args+="--no-ignore "
             shift
             ;;
-        -D)
+        -d)
             flag_max_depth=$2
             shift 2
             ;;
@@ -126,21 +224,27 @@ main() {
     [[ -v TMUX && -z $flag_P ]] && command -v fzf-tmux &> /dev/null &&
         if [[ $flag_F ]]; then fzf_bin="fzf-tmux -p100%,100%"; else fzf_bin="fzf-tmux $FZF_TMUX_OPTS"; fi
 
-    typeset dir_cmd file_cmd opts Results
+    typeset Directories Files Results Pattern Flag_file Flag_directory
+    typeset dir_cmd file_cmd opts
 
-    [[ $* ]] && __split_dirs_and_files <<< "$* "
+    [[ $* ]] && __split <<< "$* "
+    [[ $Files ]] && Flag_file=1
+    [[ $Directories ]] && Flag_directory=1
+    # 如果只传入了., 则去掉, 为了好看
+    [[ "$Directories" =~ ^[[:blank:]]*\.[[:blank:]]*$ ]] && Directories=
+    [[ $Pattern && $Files ]] && __filter_files <<< "$Files"
 
     file_cmd="printf %s\n $Files"
     dir_cmd="command fd --color=always --follow --max-depth=${flag_max_depth:-6} \
-        ${flag_types--tf} $flag_other_args ${Directories:+^} ${Directories}"
+        ${flag_types--tf} $flag_other_args ${Pattern:-^} ${Directories}"
 
     opts="
     $FZF_DEFAULT_OPTS
     --prompt 'Files> '
-    --exit-0
+    --exit-0 --select-1
     --scheme path --exact --tiebreak \"length,end,chunk,index\"
     --delimiter / --nth -1,-2
-    --header-first --header \"keybindings:C-s, C-v, C-o, A-e, A-enter, Enter\"
+    --header-first --header \"keybindings:C-s, C-v, C-o, A-e, A-enter\"
     --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)\"
     --bind=\"ctrl-s:accept\"
@@ -153,11 +257,10 @@ main() {
     Results=$(
         (
             [[ $Files ]] && $file_cmd | lscolors
-            [[ $Directories || -z $Files ]] && $dir_cmd
-        ) | (
-            FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf}
-        ) | grep -v "^$"
+            ((!Flag_file || Flag_directory)) && $dir_cmd
+        ) | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | grep -v "^$"
     )
-    [[ ${Results} ]] && __exec_action
+
+    [[ ${Results} ]] && if [[ $flag_O ]]; then echo "$Results"; else __exec_action; fi
 }
 main "$@"

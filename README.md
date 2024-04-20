@@ -155,132 +155,168 @@ usage: fg [OPTIONS] [init_query]
 > 最核心的两个脚本之一
 
 ```bash
-usage: ff [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
+usage: ff [OPTIONS] [DIRECTORIES or Files]
 
-    OPTIONS:
-        -t char set, file types dfxlspebc
-        -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
-        -D int, max-depth
-        -h bool, cancel --hidden
-        -I bool, --no-ignore
-        -q string, init_query
+OPTIONS:
+    -t char set, file types dfxlspebc
+    -T string, changed after time ( m h d w M y min day days week ... "2018-10-27 10:00:00" 2018-10-27)
+    -d int, max-depth
+    -H bool, --hidden
+    -I bool, --no-ignore
+    -P no-popup
+    -F full-window
+    -e extensions
+    -E exclude glob pattern
+    -O output to stdout
 
-        --
-        add marks ...
-    KEYBINDINGS:
-        ctrl-s horizontal direction splitw
-        ctrl-v vertical direction splitw
-        ctrl-x transform-query:echo $(dirname {})/
-        alt-e fzf-tmux-menu splitw
+    --help
+    --split Explain the parameters passed in by the user as much as possible \
+       priority: file_and_directory > max_depth > type > depth_and_type > change_time > extensions
+    --extra-args pass -> fd
+
+KEYBINDINGS:
+    ctrl-s horizontal direction splitw
+    ctrl-v vertical direction splitw
+    ctrl-o fzf-tmux-menu splitw
+    alt-e subshell editor
+    alt-enter open dirname file
 
 ```
 
 它拥有以下特性：
 
 1. 能够解析`fd` 几个比较实用的选项
-2. 可以查找指定相对目录或绝对目录
-3. 添加了目录标志。
-
-### 目录标志
-
-> 通过一个关键字来标识一个或多个目录，传入关键字即指定了对应的目录。
-
-1. 它在运行时解析，意味着他可以是在子进程中执行的shell命令。
-
-2. 它定义在`toml`文件的`[marks]` 表中
-
-目前接受以下几种形式
+2. 可以直接传递目录或文件（不需要添加其他符号）
+3. 尽可能解释用户传入的选项，传参很方便(需要加`--split` )
 
 ```bash
-[marks]
-nv = "$HOME/.config/${NVIM_APPNAME:-nvim}/lua"
-home = "$HOME"
-git = "$(git rev-parse --show-toplevel)" # 返回当前git仓库所在目录
-arr = ['aa', 'bb']
-# 注意 [和]后不能有空格
-test_arr = [
-  "$HOME/.local/bin",
-  "$XDG_CONFIG_HOME/nvim"
-]
+# 解析顺序如下
+__split() {
+    while read -d " " -r entry; do
+        # echo "|$entry|"
+        # 1 解释为目录和文件
+        __split_directory_or_file && continue
+        # 2 解释为最大和最小深度
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth "* ]] && __split_depth && continue
+        # 3 解释为文件类型
+        [[ $flag_split -eq 1 || " $flag_split " == *" type "* ]] && __split_type && continue
+        # 4 解释为文件类型和深度
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth_and_type "* ]] && __split_depth_and_type && continue
+        # 5 解释为时间
+        [[ $flag_split -eq 1 || " $flag_split " == *" changed_time "* ]] && __split_changed_time && continue
+        # 6 解释为文件拓展名
+        [[ $flag_split -eq 1 || " $flag_split " == *" extension "* ]] && __split_extension && continue
+        # 7 解释为正则或通配模式
+        [[ $flag_split -eq 1 || " $flag_split " == *" pattern "* ]] && __split_pattern || exit 1
+    done <&0
+}
+# 接下来逐个示范
+# 1 目录或文件 /只是为了区分目录，实际可以不写
+cmd  fzf/ tools/toml
+# 2 解释为最大和最小深度
+cmd 14 # min-depth 1 max-depth 4
+# 3 解释为文件类型
+cmd xdf # x 可执行 d 目录 f 普通文件，没有其他标志了，防止冲突
+# 4 解释为文件类型和最大深度
+cmd 2x # max-depth=2 file-typ=x
+# 5 解释为时间
+cmd 1m | 1h | 1day[s] | 1w | 1M | 1y # 分时天周月年
+# 6 解释为文件拓展名
+cmd cc,py, # 以,结尾，
+# 7 解释为正则或通配模式
+cmd '\bfind\b'
+cmd -g find*
+# 8 如果文件或目录与其他模式冲突可以加 -q ，强制匹配的指定数量的文件名或目录参与其他匹配
+:ls -> dx find ..
+cmd dx find ... # 冲突 因为dx 和 find 是文件名，不会参与其他匹配
+cmd dx find ... -q2 # 将前两个匹配的文件名用作其他模式
 ```
 
 ## search-string
 
-交互式查找字符串
+> 交互式查找字符串
 
 ```bash
-usage: ss [OPTIONS] [DIRECTORIES] [--] [DIRECTORY MARKS]
+usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
 
     OPTIONS:
-        -t bool types files,  Comma-separated
-        -D int max-depth
-        -h bool cancel --hidden
+        -t file types,  Comma-separated
+        -T file types(not),  Comma-separated
+        -d int max-depth
+        -H bool --hidden
         -I bool --no-ignore
-        -q char*|string init_query
+        -q Cancel the first n matching file names (Optional, default 1)
+        -w world regex
+        -u[uu] (Optional default -u)
+        -O output to stdout
+        -P no-popup
+        -F full-window
 
-        --
-        add marks ...
+        --help
+        --split Explain the parameters passed in by the user as much as possible \
+            priority: file_or_directory > max_depth > type > pattern (Optional default all)
+        --extra-args pass -> fd
+
     KEYBINDINGS:
         ctrl-s horizontal direction splitw
         ctrl-v vertical direction splitw
-        alt-e fzf-tmux-menu splitw
-
+        ctrl-o fzf-tmux-menu splitw
+        alt-e subshell editor
+        alt-enter open dirname file
 ```
 
 它拥有以下特性：
 
-1. 能够解析`rg` 几个比较实用的选项
-2. 可以查找指定相对目录或绝对目录
-3. 添加了目录标志。
-4. 可以在交互式查询时过滤特定模式的文件，以及拼接多个正则表达式。
+1.  能够解析常用的参数
+2.  接受目录或文件
+3.  同find-files，尽可能解释用户传入的参数
 
-默认使用`--`过滤文件模式、`&` 拼接多个正则 `.*?` 连接多个正则。分别使用以下三个变量定义，`CUSTOM_REGEX_SEPARATE CUSTOM_IGLOB_SEPARATE CUSTOM_CONNECT_REGEX`
-
-解析过程如下，使用while循环解析，因此，对`-- &`可以在任意位置，可以有多个。
+参数的具体解析和find-files类似, 只不过它的选项比较少
 
 ```bash
-    regex_separate="${CUSTOM_REGEX_SEPARATE:-&}"
-    iglob_separate="${CUSTOM_IGLOB_SEPARATE:---}"
-    connect_regex="${CUSTOM_CONNECT_REGEX:-.*?}"
+__split() {
+    while read -d " " -r entry; do
+        # echo "|$entry|"
+        # 1 解释为目录和文件
+        __split_directory_or_file && continue
+        # 2 解释为最大和最小深度
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth "* ]] && __split_max_depth && continue
+        # 3 解释为文件类型
+        [[ $flag_split -eq 1 || " $flag_split " == *" type "* ]] && __split_type && continue
+        # 4 解释为正则或通配模式
+        [[ $flag_split -eq 1 || " $flag_split " == *" pattern "* ]] && __split_pattern || exit 1
+    done <&0
 
-    transform_iglob="
-    setopt extended_glob
-    fzf_query=\${\${FZF_QUERY## ##}%% ##}
-    let i=len=flag=0
-    while [[ i -lt \${#fzf_query} ]]; do
-        if [[ \${fzf_query:\$i:${#regex_separate}} == '${regex_separate}' || \${fzf_query:\$i:${#iglob_separate}} == '${iglob_separate}' ]]; then
-            if [[ flag -eq 0 ]]; then
-                append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-                search_str+=\"\${append_str:+\${search_str:+${connect_regex}}}\$append_str\"
-            else
-                for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
-                do
-                    case \$iglob_entry in
-                    *)
-                        iglob_str+=\"'--iglob=\$iglob_entry' \"
-                        ;;
-                    esac
-                done
-            fi
-            [[ \${fzf_query:\$i:${#regex_separate}} == '${regex_separate}' ]] && let flag=0,len=0,i+=${#regex_separate}
-            [[ \${fzf_query:\$i:${#iglob_separate}} == '${iglob_separate}' ]] && let flag=1,len=0,i+=${#iglob_separate}
-        else
-            let len++,i++
-        fi
-    done
-    if [[ len -gt 0 ]]; then
-        if [[ flag -eq 0 ]]; then
-            append_str=\"\${\${\${fzf_query:\$[i-len]:\$len}## ##}%% ##}\"
-            search_str+=\"\${append_str:+\${search_str:+${connect_regex}}}\$append_str\"
-        else
-            for iglob_entry in \${(s/ /)\${fzf_query:\$[i-len]:\$len}}
-            do
-                iglob_str+=\"'--iglob=\$iglob_entry' \"
-            done
-        fi
-    fi
-    echo \"reload:sleep 0.1;${rg_prefix} \${iglob_str} '\$search_str' ${directories[*]} || true\"
-    "
+}
+# 1 解释为目录和文件
+# 2 解释为最大深度
+# 3 解释为文件类型
+cmd py,cpp, # rg --type=cpp --type=py
+cmd ,c # rg --type-not=c
+# 4 解释为正则或通配模式 同上
+```
+
+4.  能够在fzf过滤时，解释--iglob --hidden --no-ignore [[:digit:]] => max-depth
+5.  **解决了\b的转义问题**
+
+我怀疑`transform`执行代码是类似`eval`做多次解析的。
+所以只要是在`transform`对查询字符串做处理，就永远无法解决`'\b'`字符的转义问题，因为它总是会被解释为`\b ->b`。
+因此，我们把对字符串的分离放到文件中进行，借助`transform-query`传递命令而非字符串 。
+
+```bash
+transform_change="
+setopt extended_glob
+typeset args
+[[ \$FZF_QUERY == *--* ]] && for elem in \${(s/ /)\${FZF_QUERY##*--}}; do
+    case \$elem in
+        H) args+=\\\"--hidden \\\" ;;
+        I) args+=\\\"--no-ignore \\\" ;;
+        [[:digit:]]) args+=\\\"--max-depth=\$elem \\\" ;;
+        *) args+=\\\"'--iglob=\$elem' \\\" ;;
+    esac
+done
+echo \\\"transform-query(echo -E \\\{q} > $file_pattern; sed 's/[[:blank:]]*--.*$//' $file_pattern)+reload(${cmd} \$args \\\{q} ${Directories} ${Files} || true)+transform-query(cat $file_pattern)\\\"
+"
 ```
 
 ## fzf-filter
@@ -317,9 +353,11 @@ fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前�
 
 1. 附加到现有的非当前会话
 2. 从zoxide或其他目录源(目前没有实现其他目录源)中选择一个目录作为会话的起始目录，会话名命名规则如下：
-   - 如果是家目录为前缀，`name=~<second to last directory>-<last directory>`
-   - 否则就是根目录前缀，`name=/<second to last directory>-<last directory>`
-   - 考虑到了只有一个目录的情况
+
+- 如果是家目录为前缀，`name=~<second to last directory>-<last directory>`
+- 否则就是根目录前缀，`name=/<second to last directory>-<last directory>`
+- 考虑到了只有一个目录的情况
+
 3. 支持以查询字符串作为会话名创建(可以使用`alt-enter`准确无误触发，而`enter`只有当条目为0时才会触发 )。
 4. 如果只有一个参数`-`，那么就会直接以当前目录创建会话。
 5. 考虑受到搜索条目的影响，不能很好得打印查询字符串，定义`alt-enter`为`print-query`。同3。
