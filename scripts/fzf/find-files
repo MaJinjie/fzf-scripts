@@ -115,8 +115,9 @@ __exec_action() {
     file=$(echo "$Results" | sed -n '1p')
     Results=$(tr '\n' ' ' <<< "$Results")
 
+    # echo "$Results"
     if [[ "${trigger_key}" == "ctrl-s" ]]; then
-        tmux splitw -bv zsh -c "${EDITOR} $Results"
+        tmux splitw -bv zsh -c "echo ${Results} | xargs ${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-v" ]]; then
         tmux splitw -bh zsh -c "${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-o" ]]; then
@@ -124,10 +125,11 @@ __exec_action() {
         # shellcheck disable=SC2086
         "$CUSTOM_HOME/scripts/tmux/tmux-menu" $(realpath $Results)
     elif [[ "${trigger_key}" == "alt-enter" ]]; then
+        # eval "${EDITOR} $(dirname "$file") > /dev/tty < /dev/tty"
         "${EDITOR}" "$(dirname "$file")" > /dev/tty < /dev/tty
     else
         # shellcheck disable=SC2086
-        ${EDITOR} $Results > /dev/tty < /dev/tty
+        eval "${EDITOR} ${Results} > /dev/tty < /dev/tty"
     fi
 }
 
@@ -258,7 +260,7 @@ main() {
         {
             [[ $Files ]] && $file_cmd | lscolors
             ((!Flag_file || Flag_directory)) && $dir_cmd
-        } | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | grep -v "^$"
+        } | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | sed -e '/^$/d' -e 's/ /\\ /'
     )
 
     [[ ${Results} ]] && if [[ $flag_O ]]; then echo "$Results"; else __exec_action; fi
