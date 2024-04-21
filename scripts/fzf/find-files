@@ -244,7 +244,7 @@ main() {
     --exit-0 --select-1
     --scheme path --exact --tiebreak \"length,end,chunk,index\"
     --delimiter / --nth -1,-2
-    --header-first --header \"keybindings:C-s, C-v, C-o, A-e, A-enter\"
+    --header \":: keybindings:C-s, C-v, C-o, A-e, A-enter\"
     --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)\"
     --bind=\"ctrl-s:accept\"
@@ -255,10 +255,10 @@ main() {
     "
 
     Results=$(
-        (
+        {
             [[ $Files ]] && $file_cmd | lscolors
             ((!Flag_file || Flag_directory)) && $dir_cmd
-        ) | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | grep -v "^$"
+        } | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | grep -v "^$"
     )
 
     [[ ${Results} ]] && if [[ $flag_O ]]; then echo "$Results"; else __exec_action; fi

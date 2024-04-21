@@ -233,7 +233,7 @@ main() {
     --bind \"change:transform:$transform_change\"
     --bind \"ctrl-t:transform:$transform_toggle\"
     --delimiter :
-    --header \"keybindings: C-t, C-s, C-v, C-o, A-e, A-alt\"
+    --header \":: keybindings:C-s, C-v, C-o, A-e, A-enter\"
     --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
     --preview-window 'default:right:60%:~1:+{2}+3/2:border-left'
     --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
