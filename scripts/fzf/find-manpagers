@@ -3,13 +3,17 @@
 main() {
     [[ -v TMUX && $TMUX_SESSION != "manpager" ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
 
-    typeset result
+    typeset result opts
 
-    result=$(
-        man -k . | ${fzf_bin:-fzf} +m \
-            --prompt "Man> " --query "${*}" --nth 1 |
-            awk '{print $1}'
-    )
+    opts="
+    $FZF_DEFAULT_OPTS
+    +m --prompt \"Man> \" 
+    --query \"$*\"
+    --nth 1 --exact
+    --tiebreak \"length\"
+    "
+
+    result=$(man -k . | FZF_DEFAULT_OPTS=$opts ${fzf_bin:-fzf} | awk '{print $1}')
     [[ -n $result ]] && {
         # 传给man，将内容使用nvim的man文件类型显示。
         echo "$result" | xargs -o man | ${EDITOR} -c 'Man!'
