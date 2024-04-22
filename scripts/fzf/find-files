@@ -2,7 +2,12 @@
 
 # 1. 能够解析常用的参数
 # 2. 接受目录或文件
-# 3. 尽可能地解释用户传入的参数
+# 3. 尽可能地解释用户传入的参数(很完美，几乎完全避免了和文件名或模式冲突)
+#   1. 1,10 depth[1,10] 1h,1dchanged-time[1h,1d]
+#   2. 1d,1h [1d,1h] 2024-04-20,2024-04-25
+#   3. cc,py. => .cc files
+#   4. +[types]
+#   5. , 去除所有的depth标志
 
 help() {
     >&2 echo 'usage: ff [OPTIONS] [DIRECTORIES or Files]
@@ -10,7 +15,11 @@ help() {
     OPTIONS:
         -g glob-based search
         -p full-path
+<<<<<<< HEAD
         -t char set, file types dfxlspebc
+=======
+        -t char set, file types dfxlspebc (-t t...)
+>>>>>>> feature
         -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
         -d int, max-depth
         -H bool, --hidden
@@ -39,62 +48,77 @@ help() {
 __split() {
     while read -d " " -r entry; do
         # echo "|$entry|"
-        # 1 解释为目录和文件
+        # 解释为目录和文件
         __split_directory_or_file && continue
-        # 2 解释为最大和最小深度
-        [[ $flag_split -eq 1 || " $flag_split " == *" depth "* ]] && __split_depth && continue
-        # 3 解释为文件类型
-        [[ $flag_split -eq 1 || " $flag_split " == *" type "* ]] && __split_type && continue
-        # 4 解释为文件类型和深度
-        [[ $flag_split -eq 1 || " $flag_split " == *" depth_and_type "* ]] && __split_depth_and_type && continue
-        # 5 解释为时间
-        [[ $flag_split -eq 1 || " $flag_split " == *" changed_time "* ]] && __split_changed_time && continue
-        # 6 解释为文件拓展名
-        [[ $flag_split -eq 1 || " $flag_split " == *" extension "* ]] && __split_extension && continue
-        # 7 解释为正则或通配模式
+        # 解释为文件类型
+        [[ $flag_split -eq 1 || " $flag_split " == *" types "* ]] && __split_types && continue
+        # 解释为拓展名
+        [[ $flag_split -eq 1 || " $flag_split " == *" extensions "* ]] && __split_extensions && continue
+        # 解释为目录的深度区间
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth_interval "* ]] && __split_depth_interval && continue
+        # 解释为时间线的区间
+        [[ $flag_split -eq 1 || " $flag_split " == *" time_interval "* ]] && __split_time_interval && continue
+        # 解释为正则或通配模式
         [[ $flag_split -eq 1 || " $flag_split " == *" pattern "* ]] && __split_pattern || exit 1
     done <&0
     set +x
 }
 __split_pattern() {
     [[ $Pattern ]] && {
-        echo "$entry error, pattern is exists" &> /dev/tty
+        echo "$entry error, pattern is exists" 2> /dev/tty
         return 1
     }
     Pattern=$entry
+    return 0
 }
-__split_depth_and_type() {
-    [[ "$entry" =~ ^[[:digit:]dfx]{1,4}$ ]] && [[ "$entry" == "$(tr -s 'dfx' <<< "$entry")" ]] && for ((i = 0; i < ${#entry}; ++i)); do
-        char="${entry:$i:1}"
-        [[ $char =~ [[:digit:]] ]] && flag_max_depth=$char || flag_types+="-t$char "
-    done || return 1
+__split_types() {
+    [[ "$entry" =~ ^\+[dfxlspebchiHI]+$ ]] || return 1
 
+    typeset type types
+    types=${entry/#+/}
+    for ((i = 0; i < ${#types}; ++i)); do
+        type=${types:$i:1}
+        [[ $type == H ]] && flag_other_args+="--hidden " && continue
+        [[ $type == h ]] && flag_other_args=${flag_other_args//--hidden /} && continue
+        [[ $type == I ]] && flag_other_args+="--no-ignore " && continue
+        [[ $type == i ]] && flag_other_args=${flag_other_args//--no-ignore /} && continue
+        flag_types+="-t$type "
+    done
+    return 0
 }
-__split_type() {
-    [[ "$entry" =~ ^[dfx]{1,3}$ ]] && [[ "$entry" == "$(tr -s 'dfx' <<< "$entry")" ]] && for ((i = 0; i < ${#entry}; ++i)); do
-        flag_types+="-t${entry:$i:1} "
-    done || return 1
+__split_depth_interval() {
+    [[ "$entry" =~ ^[[:digit:]]{1,2}?,[[:digit:]]{1,2}?$ ]] || return 1
+
+    typeset min_depth max_depth
+    [[ ${min_depth:=${entry%,*}} ]] && flag_other_args+="--min-depth=$min_depth "
+    [[ ${max_depth:=${entry#*,}} ]] && flag_other_args+="--max-depth=$max_depth "
+    [[ -z $min_depth$max_depth ]] && {
+        flag_other_args=${flag_other_args//--min-depth=?[[:digit:][:space:]]/}
+        flag_other_args=${flag_other_args//--max-depth=?[[:digit:][:space:]]/}
+    }
+    return 0
 }
-__split_depth() {
-    [[ "$entry" =~ ^[[:digit:]]{2}$ ]] && {
-        flag_other_args+="--min-depth=${entry:0:1}"
-        flag_max_depth=${entry: -1:1}
-    } || return 1
+__split_time_interval() {
+    [[ "$entry" =~ ^([[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:blank:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2})?,([[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:blank:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2})?$ ]] || return 1
+
+    typeset min_time max_time
+
+    [[ ${min_time:=${entry%,*}} ]] && flag_other_args+="--changed-after=$min_time "
+    [[ ${max_time:=${entry#*,}} ]] && flag_other_args+="--changed-before=$max_time "
+    return 0
 }
-__split_changed_time() {
-    { [[ "$entry" =~ ^[[:digit:]]+([mhwMy]|day[s]?)$ ]] ||
-        [[ "$entry" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}$ ]] ||
-        [[ "$entry" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:blank:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}$ ]]; } &&
-        flag_other_args+="--changed-after=$entry" || return 1
-}
-__split_extension() {
-    [[ "$entry" =~ ,$ ]] && while read -d "," -r ext; do
-        flag_other_args+="--extension=$ext "
-    done <<< "$entry"
+__split_extensions() {
+    [[ "$entry" =~ ^[^.] ]] && [[ "$entry" =~ \.$ ]] || return 1
+
+    while read -d "," -r; do
+        flag_other_args+="--extension=$REPLY "
+    done <<< "${entry/%./,}"
+    return 0
 }
 __split_directory_or_file() {
     { [[ ! -e "$entry" ]] || ((flag_q-- > 0)); } && return 1
     [[ -d $entry ]] && Directories+="$entry " || Files+="$entry "
+    return 0
 }
 
 __filter_files() {
@@ -115,8 +139,9 @@ __exec_action() {
     file=$(echo "$Results" | sed -n '1p')
     Results=$(tr '\n' ' ' <<< "$Results")
 
+    # echo "$Results"
     if [[ "${trigger_key}" == "ctrl-s" ]]; then
-        tmux splitw -bv zsh -c "${EDITOR} $Results"
+        tmux splitw -bv zsh -c "echo ${Results} | xargs ${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-v" ]]; then
         tmux splitw -bh zsh -c "${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-o" ]]; then
@@ -124,17 +149,18 @@ __exec_action() {
         # shellcheck disable=SC2086
         "$CUSTOM_HOME/scripts/tmux/tmux-menu" $(realpath $Results)
     elif [[ "${trigger_key}" == "alt-enter" ]]; then
+        # eval "${EDITOR} $(dirname "$file") > /dev/tty < /dev/tty"
         "${EDITOR}" "$(dirname "$file")" > /dev/tty < /dev/tty
     else
         # shellcheck disable=SC2086
-        ${EDITOR} $Results > /dev/tty < /dev/tty
+        eval "${EDITOR} ${Results} > /dev/tty < /dev/tty"
     fi
 }
 
 main() {
-    typeset flag_P flag_F flag_O flag_q flag_full_path flag_split flag_g flag_max_depth flag_types flag_other_args
+    typeset flag_P flag_F flag_O flag_q flag_full_path flag_split flag_g flag_types flag_other_args
 
-    args=$(getopt -o HId:t:T:e:E:PFOgpq:: -l help,split::,extra-args: -n "$0" -- "$@")
+    args=$(getopt -o HId:t::T:e:E:PFOgpq:: -l help,split::,type::,extra-args: -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
@@ -176,10 +202,10 @@ main() {
             flag_P=1
             shift
             ;;
-        -t)
-            for ((i = 0; i < ${#2}; ++i)); do
+        -t | --type)
+            [[ $2 ]] && for ((i = 0; i < ${#2}; ++i)); do
                 flag_types+="-t${2:$i:1} "
-            done
+            done || flag_types+=
             shift 2
             ;;
         -T)
@@ -195,7 +221,7 @@ main() {
             shift
             ;;
         -d)
-            flag_max_depth=$2
+            flag_other_args+="--max-depth=$2 "
             shift 2
             ;;
         -e)
@@ -235,16 +261,17 @@ main() {
     [[ $Pattern && $Files ]] && __filter_files <<< "$Files"
 
     file_cmd="printf %s\n $Files"
-    dir_cmd="command fd --color=always --follow --max-depth=${flag_max_depth:-6} \
-        ${flag_types--tf} $flag_other_args ${Pattern:-^} ${Directories}"
-
+    dir_cmd="command fd --color=always --follow \
+        ${flag_types--tf} $flag_other_args \
+        ${Pattern:-^} ${Directories}"
+    set +x
     opts="
     $FZF_DEFAULT_OPTS
     --prompt 'Files> '
     --exit-0 --select-1
     --scheme path --exact --tiebreak \"length,end,chunk,index\"
     --delimiter / --nth -1,-2
-    --header-first --header \"keybindings:C-s, C-v, C-o, A-e, A-enter\"
+    --header \":: keybindings:C-s, C-v, C-o, A-e, A-enter\"
     --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)\"
     --bind=\"ctrl-s:accept\"
@@ -252,15 +279,15 @@ main() {
     --bind=\"ctrl-o:accept\"
     --bind=\"enter:accept\"
     --bind=\"alt-enter:accept\"
+    $FZF_CUSTOM_OPTS
     "
 
     Results=$(
-        (
+        {
             [[ $Files ]] && $file_cmd | lscolors
             ((!Flag_file || Flag_directory)) && $dir_cmd
-        ) | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | grep -v "^$"
+        } | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | sed -e '/^$/d' -e 's/ /\\ /'
     )
-    [[ $exit_code -ne 130 && ${Results} ]] && __exec_action
 
     [[ ${Results} ]] && if [[ $flag_O ]]; then echo "$Results"; else __exec_action; fi
 }

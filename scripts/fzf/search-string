@@ -2,8 +2,11 @@
 
 # 1. 能够解析常用的参数
 # 2. 接受目录或文件
-# 3. 能够在fzf过滤时，解释--iglob --hidden --no-ignore
-# 4. 同find-files，尽可能解释用户传入的参数
+# 3. 能够在fzf过滤时，解释--iglob --hidden --no-ignore --max-depth
+# 4. 尽可能解释用户传入的参数
+#   1. ,10 max-depth=10
+#   2. cpp. --type=cpp cc! --type-not=c
+#   3. , 去除所有的depth标志
 # 5. 解决了\b的转义问题
 
 help() {
@@ -25,7 +28,7 @@ help() {
         --help 
         --split Explain the parameters passed in by the user as much as possible \
             priority: file_or_directory > max_depth > type > pattern (Optional default all)
-        --extra-args pass -> fd
+        --extra-args pass -> rg
 
     KEYBINDINGS:
         ctrl-s horizontal direction splitw
@@ -39,13 +42,14 @@ help() {
 __split() {
     while read -d " " -r entry; do
         # echo "|$entry|"
-        # 1 解释为目录和文件
+        # 解释为目录和文件
         __split_directory_or_file && continue
-        # 2 解释为最大深度
-        [[ $flag_split -eq 1 || " $flag_split " == *" depth "* ]] && __split_max_depth && continue
-        # 3 解释为文件类型
-        [[ $flag_split -eq 1 || " $flag_split " == *" type "* ]] && __split_type && continue
-        # 4 解释为正则
+        # 解释为文件类型
+        [[ $flag_split -eq 1 || " $flag_split " == *" types "* ]] && __split_types && continue
+        [[ $flag_split -eq 1 || " $flag_split " == *" not_types "* ]] && __split_not_types && continue
+        # 解释为目录的深度区间
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth_interval "* ]] && __split_depth_interval && continue
+        # 解释为正则或通配模式
         [[ $flag_split -eq 1 || " $flag_split " == *" pattern "* ]] && __split_pattern || exit 1
     done <&0
     set +x
@@ -56,25 +60,38 @@ __split_pattern() {
         return 1
     }
     Pattern=$entry
+    return 0
 }
-__split_max_depth() {
-    [[ "$entry" =~ ^[[:digit:]]$ ]] && flag_max_depth=$entry || return 1
-}
-__split_type() {
-    [[ "$entry" =~ ,$ ]] && {
-        while read -d "," -r type; do
-            flag_other_args+="--type=$type "
-        done <<< "$entry"
-        return 0
+
+__split_depth_interval() {
+    [[ "$entry" =~ ^[[:digit:]]{1,2}?,[[:digit:]]{1,2}?$ ]] || return 1
+
+    typeset max_depth
+    [[ ${max_depth:=${entry#*,}} ]] && flag_other_args+="--max-depth=$max_depth "
+    [[ -z $max_depth ]] && {
+        flag_other_args=${flag_other_args//--max-depth=?[[:digit:][:space:]]/}
     }
-    [[ "$entry" =~ ^, ]] && {
-        while read -d "," -r type; do
-            flag_other_args+="--type-not=$type "
-        done <<< "${entry:1},"
-        return 0
-    }
-    return 1
+    return 0
 }
+
+__split_types() {
+    [[ "$entry" =~ ^[^.] ]] && [[ "$entry" =~ \.$ ]] || return 1
+
+    while read -d "," -r; do
+        flag_other_args+="--type=$REPLY "
+    done <<< "${entry/%./,}"
+    return 0
+}
+
+__split_not_types() {
+    [[ "$entry" =~ ^[^\!] ]] && [[ "$entry" =~ !$ ]] || return 1
+
+    while read -d "," -r; do
+        flag_other_args+="--type-not=$REPLY "
+    done <<< "${entry/%!/,}"
+    return 0
+}
+
 __split_directory_or_file() {
     { [[ ! -e "$entry" ]] || ((flag_q-- > 0)); } && return 1
     [[ -d $entry ]] && Directories+="$entry " || Files+="$entry "
@@ -102,7 +119,7 @@ __exec_action() {
 }
 
 main() {
-    typeset flag_P flag_F flag_O flag_q flag_max_depth flag_split flag_other_args
+    typeset flag_P flag_F flag_O flag_q flag_split flag_other_args
 
     args=$(getopt -o d:t:T:u::q::wHIPFO -l help,split::,extra-args: -n "$0" -- "$@")
     eval set -- "$args"
@@ -166,7 +183,7 @@ main() {
             shift
             ;;
         -d)
-            flag_max_depth=$2
+            flag_other_args+="--max-depth=$2 "
             shift 2
             ;;
         --)
@@ -190,8 +207,7 @@ main() {
     [[ $* ]] && __split <<< "$* "
     [[ "$Directories" =~ ^[[:blank:]]*\.[[:blank:]]*$ ]] && Directories=
 
-    cmd="command rg --line-number --no-heading --color=always --smart-case \
-          --max-depth=${flag_max_depth:-6} ${flag_other_args}"
+    cmd="command rg --line-number --no-heading --color=always --smart-case ${flag_other_args}"
     file_r=/tmp/f-$$
     file_f=/tmp/r-$$
     file_pattern=/tmp/pattern-$$
@@ -205,11 +221,11 @@ main() {
         case \$elem in
             H) args+=\\\"--hidden \\\" ;;
             I) args+=\\\"--no-ignore \\\" ;;
-            [[:digit:]]) args+=\\\"--max-depth=\$elem \\\" ;;
+            <1->) args+=\\\"--max-depth=\$elem \\\" ;;
             *) args+=\\\"'--iglob=\$elem' \\\" ;;
         esac
     done
-    echo \\\"transform-query(echo -E \\\{q} > $file_pattern; sed 's/[[:blank:]]*--.*$//' $file_pattern)+reload(${cmd} \$args \\\{q} ${Directories} ${Files} || true)+transform-query(cat $file_pattern)\\\"
+    echo \\\"transform-query(printf %s \\\{q} > $file_pattern; sed 's/[[:blank:]]*--.*$//' $file_pattern)+reload(${cmd} \$args -- \\\{q} ${Directories} ${Files} || true)+transform-query(cat $file_pattern)\\\"
     "
 
     transform_toggle="
@@ -221,7 +237,7 @@ main() {
     "
     init_bind="
     --query '$Pattern'
-    --bind=\"start:reload:${cmd} \{q} ${Directories} ${Files}\"
+    --bind=\"start:reload:${cmd} -- \{q} ${Directories} ${Files}\"
     "
 
     opts="
@@ -233,7 +249,7 @@ main() {
     --bind \"change:transform:$transform_change\"
     --bind \"ctrl-t:transform:$transform_toggle\"
     --delimiter :
-    --header \"keybindings: C-t, C-s, C-v, C-o, A-e, A-alt\"
+    --header \":: keybindings:C-s, C-v, C-o, A-e, A-enter\"
     --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
     --preview-window 'default:right:60%:~1:+{2}+3/2:border-left'
     --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
