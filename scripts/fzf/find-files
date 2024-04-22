@@ -15,11 +15,7 @@ help() {
     OPTIONS:
         -g glob-based search
         -p full-path
-<<<<<<< HEAD
-        -t char set, file types dfxlspebc
-=======
         -t char set, file types dfxlspebc (-t t...)
->>>>>>> feature
         -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
         -d int, max-depth
         -H bool, --hidden
