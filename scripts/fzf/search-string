@@ -225,7 +225,6 @@ main() {
             *) args+=\\\"'--iglob=\$elem' \\\" ;;
         esac
     done
-    # echo \\\"reload(${cmd} \$args \\\{q} ${Directories} ${Files} || true)\\\"
     echo \\\"transform-query(printf %s \\\{q} > $file_pattern; sed 's/[[:blank:]]*--.*$//' $file_pattern)+reload(${cmd} \$args -- \\\{q} ${Directories} ${Files} || true)+transform-query(cat $file_pattern)\\\"
     "
 

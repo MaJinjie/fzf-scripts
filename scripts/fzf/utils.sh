@@ -151,7 +151,7 @@ valid_command=(
 )
 
 [[ "${valid_command[*]}" != *"$1"* ]] && {
-    echo "command error" > /dev/tty
+    echo "command error" &> /dev/tty
     return 1
 }
 

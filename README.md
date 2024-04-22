@@ -1,10 +1,5 @@
-1. fm ./fzf/find-manpagers 查找manpagers
-2. fo ./fzf/find-oldfiles 查找nvim打开的旧文件
-3. fg ./fzf/find-gitfiles 查找当前所处git仓库的文件
-4. ff ./fzf/find-files 查找文件
-5. ss ./fzf/search-string 搜索文本
-6. fzf-filter 执行命令 + 过滤功能(实时或后台)
-7. fzf-action.sh 对过滤后的条目选择性地执行定义的动作(相当于后端执行程序)
+1. ff ./fzf/find-files 查找文件
+2. ss ./fzf/search-string 搜索文本
 
 # install
 
@@ -15,159 +10,48 @@
 ## 1 aliases
 
 ```bash
-alias fm="$CUSTOM_HOME/scripts/fzf/find-manpagers"
-alias fo="$CUSTOM_HOME/scripts/fzf/find-oldfiles"
-alias ff="$CUSTOM_HOME/scripts/fzf/find-files"
-alias fg="$CUSTOM_HOME/scripts/fzf/find-gitfiles"
-alias ss="$CUSTOM_HOME/scripts/fzf/search-string"
-alias fk="$CUSTOM_HOME/scripts/fzf/fzf-action.sh marks -A find-files"
-alias sk="$CUSTOM_HOME/scripts/fzf/fzf-action.sh marks -A search-string"
-
-
-alias di="$CUSTOM_HOME/scripts/fzf/fzf-action.sh zoxide"
-```
-
-**or**
-
-```zsh
-typeset -A fd rg
-exec_aliases() {
-    for exec_name ("$@") {
-        if [[ ${+commands[$exec_name]} ]] {
-            for k v (${(kvP)exec_name}) {
-                aliases[${k}]=$v
-            }
-        }
-    }
-}
-
-fd=(
-    fm "$CUSTOM_HOME/scripts/fzf/find-manpagers"
-    fo "$CUSTOM_HOME/scripts/fzf/find-oldfiles"
-    ff "$CUSTOM_HOME/scripts/fzf/find-files"
-    fg "$CUSTOM_HOME/scripts/fzf/find-gitfiles"
-    ja "$CUSTOM_HOME/scripts/fzf/directores-actions"
-)
-
-rg=(
-    ss "$CUSTOM_HOME/scripts/fzf/search-string"
-)
-
-exec_aliases "fd" "rg"
+ff "$CUSTOM_HOME/scripts/fzf/find-files -H -d6 --split --extra-args=\"-j 2\""
+ss "$CUSTOM_HOME/scripts/fzf/search-string -F -d6 --split --extra-args=\"-j 4\""
+frm "$CUSTOM_HOME/scripts/fzf/utils.sh rm --cmd=\"rm -rv\""
+fcp "$CUSTOM_HOME/scripts/fzf/utils.sh cp --cmd=\"cp --backup=numbered -rv\""
+fmv "$CUSTOM_HOME/scripts/fzf/utils.sh mv --cmd=\"mv --backup=numbered -v\""
 ```
 
 ## 2 PATH
 
-add to env PATH
+> add to env PATH
 
-# fzf
-
-## 1 find-manpagers
-
-`fm init-query`
-
-### keybindings
-
-- `enter` 使用EDITOR打开
-
-## 2 find-oldfiles
-
-使用了fzf中的交互式模糊查询和非交互式过滤查询。
-
-拥有以下三种使用方式：
-
-1. `fo -` 直接打开最近打开的文件
-2. `fo init-query` 直接打开非交互式过滤搜索的第一个文件
-3. `fo` 进入交互式模糊查询
-
-```bash
-# 下面的从上到下，最近打开的文件
-# /home/mjj/dotfiles/.local/scripts/.gitignore
-# /home/mjj/dotfiles/.local/scripts/fzf/directores-actions
-# /home/mjj/dotfiles/.config/zsh/.zshenv
-# /home/mjj/dotfiles/.config/zsh/zsh.d/41-aliases.zsh
-# /home/mjj/dotfiles/.config/zsh/zsh.d/70-export-plug.zsh
-# /home/mjj/dotfiles/.local/bin/nvim/ss
-# /home/mjj/.config/custom/directories.toml
-
-fo - # open /home/mjj/dotfiles/.local/scripts/.gitignore
-fo toml # open /home/mjj/.config/custom/directories.toml
-fo zsh # open  /home/mjj/dotfiles/.config/zsh/.zshenv
-```
-
-### 流程
-
-1. 从nvim中读取旧文件列表
-2. 过滤，得到非临时、存在、可读的文件
-3. fzf + action
-
-### keybindings
-
-- `C-x` 将文件的目录复制到查询中（以便创建给定目录的文件)
-
-- `enter` 使用EDITOR打开已选择的文件或新建未查询到的文件
-
-```bash
---bind="enter:accept-or-print-query" | sed -n "${*:+1}p"
-```
-
-- `C-s|h` 使用tmux垂直或水平分割文件
-
-```bash
-tmux splitw "-b${flag}" zsh -c "${EDITOR} ${files[*]}"
-```
-
-- `C-o` 使用tmux菜单打开文件
-
-- `A-e` 在非fzf-tmux时使用`execute`打开
-
-## find-gitfiles
-
-类似于find-oldfiles， 文件列表是当前git仓库的文件。
-其中，文件列表使用`git ls-files --[flags]`得到。
-
-**新增了以下功能**：
-
-1. 为文件增加增加git状态，同时保留文件的颜色
-2. `c-g`显示git仓库未跟踪文件
-3. `?`切换为git操作模式，按压`AUM`，分别对选中的文件执行`git add | git restore --staged | git restore`
-4. 修改了预览视图，命令为`git diff --color=always }`
-   - .M 显示暂存区和工作区的差异
-   - M. 查看暂存区和版本库之间的差异
-   - 其他 bat
-
-### options
-
-```bash
-usage: fg [OPTIONS] [init_query]
-
-    OPTIONS:
-        -m + --modified
-        -d + --deleted
-        -s + --stage
-        -k + --killed
-        -o + --others
-        -i + --ignored
-```
+# introduce
 
 ## find-files
 
 > 最核心的两个脚本之一
 
 ```bash
+# 1. 能够解析常用的参数
+# 2. 接受目录或文件
+# 3. 尽可能地解释用户传入的参数(很完美，几乎完全避免了和文件名或模式冲突)
+#   1. depth: 1,10 depth[1,10] 1h,1dchanged-time[1h,1d]
+#   2. time: 1d,1h [1d,1h] 2024-04-20,2024-04-25
+#   3. extensions: cc,py. => .cc files
+#   4. types: +x +i +h +Hx
+#   5. , 去除所有的depth标志
 usage: ff [OPTIONS] [DIRECTORIES or Files]
 
 OPTIONS:
-    -t char set, file types dfxlspebc
-    -T string, changed after time ( m h d w M y min day days week ... "2018-10-27 10:00:00" 2018-10-27)
-    -d int, max-depth
-    -H bool, --hidden
-    -I bool, --no-ignore
-    -P no-popup
-    -F full-window
-    -e extensions
-    -E exclude glob pattern
-    -O output to stdout
+        -g glob-based search
+        -p full-path
+        -t char set, file types dfxlspebc (-t t...)
+        -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
+        -d int, max-depth
+        -H bool, --hidden
+        -I bool, --no-ignore
+        -P no-popup
+        -F full-window
+        -e extensions
+        -E exclude glob pattern
+        -O output to stdout
+        -q Cancel the first n matching file names (Optional default 1)
 
     --help
     --split Explain the parameters passed in by the user as much as possible \
@@ -196,40 +80,37 @@ __split() {
         # echo "|$entry|"
         # 1 解释为目录和文件
         __split_directory_or_file && continue
-        # 2 解释为最大和最小深度
-        [[ $flag_split -eq 1 || " $flag_split " == *" depth "* ]] && __split_depth && continue
-        # 3 解释为文件类型
-        [[ $flag_split -eq 1 || " $flag_split " == *" type "* ]] && __split_type && continue
-        # 4 解释为文件类型和深度
-        [[ $flag_split -eq 1 || " $flag_split " == *" depth_and_type "* ]] && __split_depth_and_type && continue
-        # 5 解释为时间
-        [[ $flag_split -eq 1 || " $flag_split " == *" changed_time "* ]] && __split_changed_time && continue
-        # 6 解释为文件拓展名
-        [[ $flag_split -eq 1 || " $flag_split " == *" extension "* ]] && __split_extension && continue
-        # 7 解释为正则或通配模式
+        # 解释为文件类型
+        [[ $flag_split -eq 1 || " $flag_split " == *" types "* ]] && __split_types && continue
+        # 解释为拓展名
+        [[ $flag_split -eq 1 || " $flag_split " == *" extensions "* ]] && __split_extensions && continue
+        # 解释为目录的深度区间
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth_interval "* ]] && __split_depth_interval && continue
+        # 解释为时间线的区间
+        [[ $flag_split -eq 1 || " $flag_split " == *" time_interval "* ]] && __split_time_interval && continue
+        # 解释为正则或通配模式
         [[ $flag_split -eq 1 || " $flag_split " == *" pattern "* ]] && __split_pattern || exit 1
     done <&0
 }
-# 接下来逐个示范
+# 接下来逐个示范 (有的叠加有的覆盖)
 # 1 目录或文件 /只是为了区分目录，实际可以不写
 cmd  fzf/ tools/toml
-# 2 解释为最大和最小深度
-cmd 1,10 # min-depth 1 max-depth 10
-# 3 解释为文件类型
-cmd xdf # x 可执行 d 目录 f 普通文件，没有其他标志了，防止冲突
-# 4 解释为文件类型和最大深度
-cmd 2x # max-depth=2 file-typ=x
-# 5 解释为时间
-cmd 1m | 1h | 1day[s] | 1w | 1M | 1y # 分时天周月年
-# 6 解释为文件拓展名
-cmd cc,py, # 以,结尾，
+# 2 解释为类型(xdflspecbihIH) I => no-ignore  H => hidden h => clear hidden
+cmd +xd
+# 3 解释为深度范围
+cmd 1,10
+# 4 解释为时间线区间
+cmd 1d,1h # 1day前 - 1h前修改的文件
+cmd 2024-04-20,2024-04-25 # 20-25日修改的文件
+# 5 解释为文件拓展名
+cmd cc,py. # 以.结尾,以，分割
 # 7 解释为正则或通配模式
 cmd '\bfind\b'
 cmd -g find*
 # 8 如果文件或目录与其他模式冲突可以加 -q ，强制匹配的指定数量的文件名或目录参与其他匹配
 :ls -> dx find ..
-cmd dx find ... # 冲突 因为dx 和 find 是文件名，不会参与其他匹配
-cmd dx find ... -q2 # 将前两个匹配的文件名用作其他模式
+cmd +dx find ... # 冲突 因为dx 和 find 是文件名，不会参与其他匹配
+cmd +dx find ... -q2 # 将前两个匹配的文件名用作其他模式
 ```
 
 ## search-string
@@ -267,23 +148,26 @@ usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
 
 它拥有以下特性：
 
-1.  能够解析常用的参数
-2.  接受目录或文件
-3.  同find-files，尽可能解释用户传入的参数
-
-参数的具体解析和find-files类似, 只不过它的选项比较少
+1. 能够解析常用的参数
+2. 接受目录或文件
+3. 尽可能解释用户传入的参数
+   - ,10 max-depth=10
+   - cpp. --type=cpp cc! --type-not=c
+   - , 去除所有的depth标志
+4. 能够正确解析带有空格的文件
 
 ```bash
 __split() {
     while read -d " " -r entry; do
         # echo "|$entry|"
-        # 1 解释为目录和文件
+        # 解释为目录和文件
         __split_directory_or_file && continue
-        # 2 解释为最大和最小深度
-        [[ $flag_split -eq 1 || " $flag_split " == *" depth "* ]] && __split_max_depth && continue
-        # 3 解释为文件类型
-        [[ $flag_split -eq 1 || " $flag_split " == *" type "* ]] && __split_type && continue
-        # 4 解释为正则或通配模式
+        # 解释为文件类型
+        [[ $flag_split -eq 1 || " $flag_split " == *" types "* ]] && __split_types && continue
+        [[ $flag_split -eq 1 || " $flag_split " == *" not_types "* ]] && __split_not_types && continue
+        # 解释为目录的深度区间
+        [[ $flag_split -eq 1 || " $flag_split " == *" depth_interval "* ]] && __split_depth_interval && continue
+        # 解释为正则或通配模式
         [[ $flag_split -eq 1 || " $flag_split " == *" pattern "* ]] && __split_pattern || exit 1
     done <&0
 
@@ -291,58 +175,55 @@ __split() {
 # 1 解释为目录和文件
 # 2 解释为最大深度
 # 3 解释为文件类型
-cmd py,cpp, # rg --type=cpp --type=py
-cmd ,c # rg --type-not=c
+cmd py,cpp. # rg --type=cpp --type=py
+cmd ,c! # rg --type-not=c
 # 4 解释为正则或通配模式 同上
 ```
 
-4.  能够在fzf过滤时，解释--iglob --hidden --no-ignore [[:digit:]] => max-depth
-5.  **解决了\b的转义问题**
+4.  能够在fzf过滤时，解释--iglob --hidden --no-ignore --max-depth(通用模式表达为`<1->`,正整数 )
+5.  **解决了\b的转义问题**, 修复了输入时的多个bug。
 
-我怀疑`transform`执行代码是类似`eval`做多次解析的。
-所以只要是在`transform`对查询字符串做处理，就永远无法解决`'\b'`字符的转义问题，因为它总是会被解释为`\b ->b`。
-因此，我们把对字符串的分离放到文件中进行，借助`transform-query`传递命令而非字符串 。
+    - 我怀疑`transform`执行代码是类似`eval`做多次解析的。
+      所以只要是在`transform`中对查询字符串做处理，就永远无法解决`'\b'`字符的转义问题，因为它总是会被解释为`\b ->b`。
+      因此，我们把对字符串的分离放到文件中进行，借助`transform-query`传递命令而非字符串 。
+    - 无论是zsh的`print`命令还是bash的`echo`命令，对于单个`-`, 都是输出为空，需要使用`printf`
+    - fzf和rg之间查询的切换做了非转义处理
 
 ```bash
 transform_change="
-setopt extended_glob
-typeset args
-[[ \$FZF_QUERY == *--* ]] && for elem in \${(s/ /)\${FZF_QUERY##*--}}; do
-    case \$elem in
-        H) args+=\\\"--hidden \\\" ;;
-        I) args+=\\\"--no-ignore \\\" ;;
-        [[:digit:]]) args+=\\\"--max-depth=\$elem \\\" ;;
-        *) args+=\\\"'--iglob=\$elem' \\\" ;;
-    esac
-done
-echo \\\"transform-query(echo -E \\\{q} > $file_pattern; sed 's/[[:blank:]]*--.*$//' $file_pattern)+reload(${cmd} \$args \\\{q} ${Directories} ${Files} || true)+transform-query(cat $file_pattern)\\\"
+    setopt extended_glob
+    typeset args
+    [[ \$FZF_QUERY == *--* ]] && for elem in \${(s/ /)\${FZF_QUERY##*--}}; do
+        case \$elem in
+            H) args+=\\\"--hidden \\\" ;;
+            I) args+=\\\"--no-ignore \\\" ;;
+            <1->) args+=\\\"--max-depth=\$elem \\\" ;;
+            *) args+=\\\"'--iglob=\$elem' \\\" ;;
+        esac
+    done
+    echo \\\"transform-query(printf %s \\\{q} > $file_pattern; sed 's/[[:blank:]]*--.*$//' $file_pattern)+reload(${cmd} \$args -- \\\{q} ${Directories} ${Files} || true)+transform-query(cat $file_pattern)\\\"
+"
+
+# 在没有给定初始匹配模式时，不会启动rg, 只有当Pattern不为空时才会启动初始查询。
+init_bind="
+--query '$Pattern'
+--bind=\"start:reload:${cmd} -- \{q} ${Directories} ${Files}\"
 "
 ```
 
-## fzf-filter
+## fzf/utils.sh
 
-> 根据指定模式进行过滤，即以指定目录集作为源进行过滤。
+> 基于find-files脚本，为常用命令编写的实用工具。
 
-```bash
-fzf-filter zoxide # 以zoxide中的目录作为源过滤
-fzf-filter git # 以所有git仓库的根目录作为源过滤
+**目前包含以下几个命令：**
 
-fzf-filter -P # 不popup
-fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前或源后同时过滤
-```
+1. `rm` 选择 + 删除，默认命令`rm -r`
+2. `cp` 指定目录 + 选择 + 拷贝，默认命令`cp -a`
+3. `mv` 指定目录 + 选择 + 移动，默认命令`mv --backup=numbered`
 
-对于marks,我关闭了它的在线过滤属性， 你会看到这么一句代码`if ((0)) && [[ $# -eq 0 ]]; then`, 因此它永远不会发生。
-若要开启，请删除`((0)) &&`
+详细参数请看脚本中的参数解析
 
-它拥有良好的拓展性，你只需要在脚本中添加一个`__<mode>_mode` 函数，即可新增一种过滤模式。
-
-## fzf-action
-
-> 取代了directories-actions, 对fzf-filter筛选出的条目执行你想要的操作
-
-# tmux
-
-## fzf-tmux-menu
+## tmux/fzf-tmux-menu
 
 使用tmux菜单实现9种方式拆分,可以集成到上述脚本中使用
 `top bottom left right fulltop fullbottom fullleft fullright new-window`
@@ -383,9 +264,7 @@ fzf-filter --before|--after <<<"aaaa\nbbbbb"  # 将标准输入附加到源前�
    }
    ```
 
-# tools
-
-## toml
+## tools/toml
 
 > 自己使用bash编写的一个用来解析toml文件的简单工具。
 
@@ -402,7 +281,7 @@ toml() {
     $toml_path "$1" -f "$config_dir/directories.toml" -t "marks" "${@:2}"
 }
 toml pmarks # 打印出对应文件对应表中定义的所有键
-toml gmark "key" # 获取表中某一个键对应的值（只允许一个键，多个键可以写循环，尽量使功能单一化，方便调用和维护）
+toml gmark "key" # 获取表中某一个键对应的值（只允许一个键，多个键可以写循环）
 
 # 目前支持解析的形式（也只用到这么多）
 
