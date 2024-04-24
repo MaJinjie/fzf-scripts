@@ -24,6 +24,7 @@ help() {
         -F full-window
         -e extensions
         -E exclude glob pattern
+        -o select + -O
         -O output to stdout
         -q Cancel the first n matching file names (Optional default 1)
 
@@ -156,7 +157,7 @@ __exec_action() {
 main() {
     typeset flag_P flag_F flag_O flag_q flag_full_path flag_split flag_g flag_types flag_other_args
 
-    args=$(getopt -o HId:t::T:e:E:PFOgpq:: -l help,split::,type::,extra-args: -n "$0" -- "$@")
+    args=$(getopt -o HId:t::T:e:E:PFoOgpq:: -l help,split::,type::,extra-args: -n "$0" -- "$@")
     eval set -- "$args"
 
     while true; do
@@ -186,8 +187,8 @@ main() {
             flag_other_args+="--glob "
             shift
             ;;
-        -O)
-            flag_O=1
+        -O | -o)
+            [[ $1 == -o ]] && flag_O=1 || flag_O=-1
             shift
             ;;
         -F)
@@ -259,7 +260,7 @@ main() {
     file_cmd="printf %s\\\n $Files | lscolors"
     dir_cmd="command fd --color=always --follow \
         ${flag_types--tf} $flag_other_args \
-        ${Pattern:-^} ${Directories}"
+        '${Pattern:-^}' ${Directories}"
     set +x
     opts="
     $FZF_DEFAULT_OPTS
@@ -281,10 +282,10 @@ main() {
     Results=$(
         {
             [[ $Files ]] && eval "$file_cmd"
-            ((!Flag_file || Flag_directory)) && $dir_cmd
-        } | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | sed -e '/^$/d' -e 's/ /\\ /'
+            ((!Flag_file || Flag_directory)) && eval "$dir_cmd"
+        } | if ((flag_O >= 0)); then FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf}; else cat; fi | sed -e '/^$/d' -e 's/ /\\ /'
     )
 
-    [[ ${Results} ]] && if [[ $flag_O ]] && ! grep -Ex "(ctrl|alt)-\w+" < <(echo "$Results" | sed -n '1p'); then echo "$Results"; else __exec_action; fi
+    [[ ${Results} ]] && if ((flag_O)) && ! grep -Ex "(ctrl|alt)-\w+" < <(echo "$Results" | sed -n '1p'); then echo "$Results"; else __exec_action; fi
 }
 main "$@"
