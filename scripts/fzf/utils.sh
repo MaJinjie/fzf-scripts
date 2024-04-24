@@ -3,7 +3,7 @@
 FD_BIN=$CUSTOM_HOME/scripts/fzf/find-files
 FD_OPTS="q::gpP"
 FD_LOPTS=""
-FD_ARGS=(-Ht -d1 --split --extra-args="-j 2" -O)
+FD_ARGS=(-Ht -d1 --split -O)
 
 __rm__() {
     typeset cmd flag_cmd_args flag_fd_args

@@ -137,9 +137,9 @@ __exec_action() {
 
     # echo "$Results"
     if [[ "${trigger_key}" == "ctrl-s" ]]; then
-        tmux splitw -bv zsh -c "echo ${Results} | xargs ${EDITOR} $Results"
+        tmux splitw -bh zsh -c "echo ${Results} | xargs ${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-v" ]]; then
-        tmux splitw -bh zsh -c "${EDITOR} $Results"
+        tmux splitw -bv zsh -c "${EDITOR} $Results"
     elif [[ "${trigger_key}" == "ctrl-o" ]]; then
         # shellcheck disable=SC2046
         # shellcheck disable=SC2086
@@ -256,7 +256,7 @@ main() {
     [[ "$Directories" =~ ^[[:blank:]]*\.[[:blank:]]*$ ]] && Directories=
     [[ $Pattern && $Files ]] && __filter_files <<< "$Files"
 
-    file_cmd="printf %s\n $Files"
+    file_cmd="printf %s\\\n $Files | lscolors"
     dir_cmd="command fd --color=always --follow \
         ${flag_types--tf} $flag_other_args \
         ${Pattern:-^} ${Directories}"
@@ -264,7 +264,7 @@ main() {
     opts="
     $FZF_DEFAULT_OPTS
     --prompt 'Files> '
-    --exit-0 --select-1
+    --exit-0
     --scheme path --exact --tiebreak \"length,end,chunk,index\"
     --delimiter / --nth -1,-2
     --header \":: keybindings:C-s, C-v, C-o, A-e, A-enter\"
@@ -280,11 +280,11 @@ main() {
 
     Results=$(
         {
-            [[ $Files ]] && $file_cmd | lscolors
+            [[ $Files ]] && eval "$file_cmd"
             ((!Flag_file || Flag_directory)) && $dir_cmd
         } | FZF_DEFAULT_OPTS="$opts" ${fzf_bin:-fzf} | sed -e '/^$/d' -e 's/ /\\ /'
     )
 
-    [[ ${Results} ]] && if [[ $flag_O ]]; then echo "$Results"; else __exec_action; fi
+    [[ ${Results} ]] && if [[ $flag_O ]] && ! grep -Ex "(ctrl|alt)-\w+" < <(echo "$Results" | sed -n '1p'); then echo "$Results"; else __exec_action; fi
 }
 main "$@"
