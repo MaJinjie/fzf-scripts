@@ -6,7 +6,7 @@ typeset -A LOG=(
     help 32
 )
 FD_BIN=$CUSTOM_HOME/scripts/fzf/find-files
-ERROR_FILE=/tmp/error-$$ && trap "rm -f $ERROR_FILE" EXIT SIGINT SIGTERM
+ERROR_FILE=/tmp/error-$$; trap "rm -f $ERROR_FILE" EXIT SIGINT SIGTERM
 valid_commands=(rm cp mv)
 
 report() {
@@ -36,6 +36,8 @@ __rm__() {
     cmd="command ${cmd:-rm} $flag_args"
     fopts="--prompt \"To-Rm > \" "
 
+    # -- 后的选项和参数传递给fd脚本
+    (((rmidx=$@[(i)--]) < $#)) && set -- "${@[1,rmidx-1]}" "${@[rmidx+1,-1]}"
     results=$(FZF_CUSTOM_OPTS=$fopts $FD_BIN -o --split -d1 -t "$@")
     
     [[ -n $results ]] && { eval $cmd ${(f)results} 2> $ERROR_FILE || report_error "${(f@)$(<$ERROR_FILE)}" }
@@ -57,6 +59,7 @@ __cp__() {
     cmd="command ${cmd:-cp} $flag_args"
     fopts="--prompt \"To-Cp > \" "
 
+    (((rmidx=$@[(i)--]) < $#)) && set -- "${@[1,rmidx-1]}" "${@[rmidx+1,-1]}"
     results=$(FZF_CUSTOM_OPTS=$fopts $FD_BIN -o --split -d1 -t -E $zopts[-t] "$@")
     
     [[ ! -d $zopts[-t] ]] && { mkdir -p $zopts[-t] 2> $ERROR_FILE || report_error "${(f@)$(<$ERROR_FILE)}" }
@@ -80,6 +83,7 @@ __mv__() {
     cmd="command ${cmd:-mv} $flag_args"
     fopts="--prompt \"To-Mv > \" "
 
+    (((rmidx=$@[(i)--]) < $#)) && set -- "${@[1,rmidx-1]}" "${@[rmidx+1,-1]}"
     results=$(FZF_CUSTOM_OPTS=$fopts $FD_BIN -o --split -d1 -t -E $zopts[-t] "$@")
     
     [[ ! -d $zopts[-t] ]] && { mkdir -p $zopts[-t] 2> $ERROR_FILE || report_error "${(f@)$(<$ERROR_FILE)}"  }
