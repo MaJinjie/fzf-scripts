@@ -201,8 +201,8 @@ main() {
         if [[ $flag_F ]]; then fzf_bin="fzf-tmux -p100%,100%"; else fzf_bin="fzf-tmux $FZF_GREP_TMUX_OPTS"; fi
 
     typeset Directories Files Results Pattern
-    typeset cmd opts file_r file_f file_pattern
-    typeset transform_change transform_toggle init_bind
+    typeset cmd opts file_r file_f file_preview_size
+    typeset change_preview change_reload toggle_search initial_search
 
     [[ $* ]] && __split <<< "$* "
     [[ "$Directories" =~ ^[[:blank:]]*\.[[:blank:]]*$ ]] && Directories=
@@ -210,48 +210,78 @@ main() {
     cmd="command rg --line-number --no-heading --color=always --smart-case ${flag_other_args}"
     file_r=/tmp/f-$$
     file_f=/tmp/r-$$
-    file_pattern=/tmp/pattern-$$
-    # shellcheck disable=SC2064
-    trap "command rm -f $file_r $file_f $file_pattern" EXIT SIGINT SIGTERM
+    file_preview_size=/tmp/preview-size-$$
 
-    transform_change="
+    # shellcheck disable=SC2064
+    trap "command rm -f $file_r $file_f $file_preview_size" EXIT SIGINT SIGTERM
+
+    # zsh版本
+    change_reload="
     setopt extended_glob
     typeset args
     [[ \$FZF_QUERY == *--* ]] && for elem in \${(s/ /)\${FZF_QUERY##*--}}; do 
         case \$elem in
             H) args+=\\\"--hidden \\\" ;;
             I) args+=\\\"--no-ignore \\\" ;;
-            <1->) args+=\\\"--max-depth=\$elem \\\" ;;
+            (<1->|),(<1->|)) args+=\\\"--max-depth=\${\${elem#*,}:-99} \\\" ;;
+            [[:lower:]]##.) args+=\\\"--type=\${elem%.} \\\" ;;
+            [[:lower:]]##!) args+=\\\"--type-not=\${elem%.} \\\" ;;
             *) args+=\\\"'--iglob=\$elem' \\\" ;;
         esac
     done
-    echo \\\"transform-query(printf %s \\\{q} > $file_pattern; sed 's/[[:blank:]]*--.*$//' $file_pattern)+reload(${cmd} \$args -- \\\{q} ${Directories} ${Files} || true)+transform-query(cat $file_pattern)\\\"
+    print -r \\\"reload(${cmd} \$args -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
     "
 
-    transform_toggle="
+    change_preview="
+    typeset lines=\$((FZF_LINES - 3))  match_count=\$FZF_MATCH_COUNT preview_lines=\${FZF_PREVIEW_LINES:-\${\$(<$file_preview_size):-0}}
+    typeset b1=10000 b2=1000 b3=100 per1=0 per2=30 per3=60 result
+    if ((match_count == 0 || match_count > b1)); then
+        result=0
+    elif ((match_count > b2)); then
+        result=\$((((b1 - match_count) * (per2 - per1) / (b1 - b2)  + per1) * lines / 100))
+    elif ((match_count > b3)); then
+        result=\$((((b2 - match_count) * (per3 - per2) / (b2 - b3)  + per2) * lines / 100))
+    elif ((match_count > (lines - preview_lines))); then
+        result=\$preview_lines
+    else
+        result=$\((lines - match_count))
+    fi
+    # print lines:\$lines match_count:\$match_count preview_lines:\$preview_lines result:\$result >> /home/mjj/.custom/scripts/fzf/debug.log
+    print \$result > $file_preview_size 
+    print \\\"change-preview-window(\$result)\\\"
+    "
+
+    toggle_search="
     if [[ ! \$FZF_PROMPT =~ Rg ]]; then
         echo \\\"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:echo -E \\\{q} > $file_f; cat $file_r\\\"
     else
         echo \\\"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:echo -E \\\{q} > $file_r; cat $file_f\\\"
     fi
     "
-    init_bind="
-    --query '$Pattern'
-    --bind=\"start:reload:${cmd} -- \{q} ${Directories} ${Files}\"
+
+    initial_search="
+    if [[ -z '\{q}' ]]; then
+        echo \\\"ignore\\\"
+    else
+        echo \\\"reload:${cmd} -- \\\{q} ${Directories} ${Files}\\\"
+    fi
     "
 
     opts="
     $FZF_DEFAULT_OPTS
-    --disabled +m
+    --layout=reverse-list --disabled +m
+    --query '$Pattern'
     --prompt \"Rg> \"
     --exact
-    ${Pattern:+${init_bind}}
-    --bind \"change:transform:$transform_change\"
-    --bind \"ctrl-t:transform:$transform_toggle\"
+    --bind=\"start:transform:$initial_search\"
+    --bind \"change:transform:$change_reload\"
+    --bind \"result:transform:$change_preview\"
+    --bind \"resize:transform:$change_preview\"
+    --bind \"ctrl-t:transform:$toggle_search\"
     --delimiter :
-    --header \":: keybindings:C-s, C-v, C-o, A-e, A-enter\"
-    --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
-    --preview-window 'default:right:60%:~1:+{2}+3/2:border-left'
+    --header-first --header=\"keybindings:: C-s, C-v, C-o, A-e, A-enter | pattern:: H I ,10 *.cc cpp. c!\"
+    --preview-window \"up:~1,+{2}/2:border-down\"
+    --preview 'bat --style=numbers,header,changes,snip,numbers --color=always --highlight-line {2} -- {1}'
     --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {1} +{2} > /dev/tty < /dev/tty)\"
     --bind=\"ctrl-s:accept\"
