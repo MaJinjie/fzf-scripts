@@ -281,7 +281,7 @@ main() {
     --delimiter :
     --header-first --header=\"keybindings:: C-s, C-v, C-o, A-e, A-enter | pattern:: H I ,10 *.cc cpp. c!\"
     --preview-window \"up:~1,+{2}/2:border-down\"
-    --preview 'bat --style=numbers,header,changes,snip,numbers --color=always --highlight-line {2} -- {1}'
+    --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
     --expect \"ctrl-s,ctrl-v,ctrl-o,alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {1} +{2} > /dev/tty < /dev/tty)\"
     --bind=\"ctrl-s:accept\"
