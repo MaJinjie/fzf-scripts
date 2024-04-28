@@ -12,10 +12,10 @@
 
 REPORT=$CUSTOM_HOME/scripts/tools/report
 
-report_info() { $REPORT --indent --level "info" "$@" > /dev/tty }
-report_info_and_exit() { $REPORT --indent --level "info" "$@" > /dev/tty; exit 0 }
-report_help() { $REPORT --level "help" "$@" > /dev/tty; exit 0 }
-report_error() { $REPORT --indent --level "error" "$@" 2> /dev/tty; exit 1 }
+report_info() { $REPORT --indent --level "info" -- "$@" > /dev/tty }
+report_warn() { $REPORT --indent --level "warn" -- "$@" > /dev/tty }
+report_help() { $REPORT --level "help" -- "$@" > /dev/tty; exit 0 }
+report_error() { $REPORT --indent --level "error" -- "$@" 2> /dev/tty; exit 1 }
 
 help() {
     local help_msg='usage: ff [OPTIONS] [DIRECTORIES or Files]
@@ -55,7 +55,7 @@ __split() {
             [[ -d $item ]] && Directories+=$item || Files+=$item
             continue
         }
-        [[ ((o_split)) && $item =~ , ]] && {
+        ((o_split)) && [[ $item =~ , ]] && {
             if [[ $item =~ ^(\\.|[[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:space:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}),(\\.|[[:digit:]]+[mhdwMy]|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}|[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[[:space:]][[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2})?$ ]]; then 
                 [[ $item =~ ^[^.] ]] && o_args+="--changed-after=${item%,*}"
                 [[ $item =~ [^.,]$ ]] && o_args+="--changed-before=${item#*,}"
@@ -141,17 +141,22 @@ main() {
     --expect \"alt-s,alt-v,alt-o,alt-enter\"
     --bind=\"alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)\"
     --bind=\"alt-s:accept,alt-v:accept,alt-enter:accept,enter:accept\"
+    --bind=\"one:select\"
     $FZF_CUSTOM_OPTS
     "
     
     Results=$( 
     { 
-        (($#Files)) && lscolors <<<"${(F)Files}"
+        (($#Files)) && lscolors <<<${(F)Files}
         (($#Directories || !$#Files)) && eval $cmd --type=${^o_types:-f} --extension=${^o_extensions} \"--exclude=${^o_excludes}\" \"${Pattern:-\^}\" $Directories
     } | FZF_DEFAULT_OPTS=$fopts ${fbin:-fzf})
     exitcode=$?
 
-    ((exitcode == 1 || exitcode == 130)) || { ((o_output)) && print $Results || __handle_result }
+    if ((exitcode == 1)); then report_warn  "没有搜索到任何相关的文件";
+    elif ((exitcode == 130)); then :;
+    elif ((o_output)); then print $Results;
+    else __handle_result;fi
+
     return $exitcode
 }
 main "$@"

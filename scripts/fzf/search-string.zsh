@@ -13,10 +13,10 @@
 
 REPORT=$CUSTOM_HOME/scripts/tools/report
 
-report_info() { $REPORT --indent --level "info" "$@" > /dev/tty }
-report_info_and_exit() { $REPORT --indent --level "info" "$@" > /dev/tty; exit 0 }
-report_help() { $REPORT --level "help" "$@" > /dev/tty; exit 0 }
-report_error() { $REPORT --indent --level "error" "$@" 2> /dev/tty; exit 1 }
+report_info() { $REPORT --indent --level "info" -- "$@" > /dev/tty }
+report_warn() { $REPORT --indent --level "warn" -- "$@" > /dev/tty }
+report_help() { $REPORT --level "help" -- "$@" > /dev/tty; exit 0 }
+report_error() { $REPORT --indent --level "error" -- "$@" 2> /dev/tty; exit 1 }
 
 __help() {
     local help_msg='usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
@@ -53,7 +53,7 @@ __split() {
             [[ -d $item ]] && Directories+=$item || Files+=$item
             continue
         }
-        [[ ((o_split)) && $item =~ , ]] && {
+        ((o_split)) && [[ $item =~ , ]] && {
             while (($#item)); do
                 case $item in
                     ,#) break ;;
@@ -168,17 +168,17 @@ main() {
 
     toggle_search="
     if [[ ! \$FZF_PROMPT =~ Rg ]]; then
-        echo \\\"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:echo -E \\\{q} > $file_fzf; cat $file_rg\\\"
+        print \\\"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:print -r \\\{q} > $file_fzf; cat $file_rg\\\"
     else
-        echo \\\"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:echo -E \\\{q} > $file_rg; cat $file_fzf\\\"
+        print \\\"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:print -r \\\{q} > $file_rg; cat $file_fzf\\\"
     fi
     "
 
     initial_search="
     if [[ -z '\{q}' ]]; then
-        echo \\\"ignore\\\"
+        print \\\"ignore\\\"
     else
-        echo \\\"reload:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files}\\\"
+        print \\\"reload:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files}\\\"
     fi
     "
 
@@ -203,10 +203,13 @@ main() {
     $FZF_CUSTOM_OPTS
     "
     
-    Results=$(: | FZF_DEFAULT_OPTS=$fopts ${fbin:-fzf})
+    eval $cmd $o_dynamic $o_types --files && Results=$(: | FZF_DEFAULT_OPTS=$fopts ${fbin:-fzf})
     exitcode=$?
 
-    ((exitcode == 1 || exitcode == 130)) || __handle_result 
+    if ((exitcode == 1)); then report_warn  "没有搜索到任何相关的文件";
+    elif ((exitcode == 130)); then :;
+    else __handle_result;fi
+    
     return $exitcode
 }
 main "$@"
