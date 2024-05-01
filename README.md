@@ -1,5 +1,10 @@
-1. ff ./fzf/find-files 查找文件
-2. ss ./fzf/search-string 搜索文本
+1. fzf/find-files.zsh 查找文件
+2. fzf/search-string.zsh 搜索文本
+3. fzf/utils.zsh 封装一些实用的工具
+
+# feature
+
+1. find-files.zsh
 
 # install
 
@@ -10,16 +15,12 @@
 ## 1 aliases
 
 ```bash
-ff "$CUSTOM_HOME/scripts/fzf/find-files -H -d6 --split --extra-args=\"-j 2\""
-ss "$CUSTOM_HOME/scripts/fzf/search-string -F -d6 --split --extra-args=\"-j 4\""
-frm "$CUSTOM_HOME/scripts/fzf/utils.sh rm --cmd=\"rm -rv\""
-fcp "$CUSTOM_HOME/scripts/fzf/utils.sh cp --cmd=\"cp --backup=numbered -rv\""
-fmv "$CUSTOM_HOME/scripts/fzf/utils.sh mv --cmd=\"mv --backup=numbered -v\""
+ff "$FZF_PREFIX/find-files.zsh -H -d6 --split"
+ss "$FZF_PREFIX/search-string.zsh -d6 --window full --split --args \"-j 2\""
+frm "$FZF_PREFIX/utils.zsh rm --cmd=\"rm -rv\""
+fcp "$FZF_PREFIX/utils.zsh cp --cmd=\"cp -arv\""
+fmv "$FZF_PREFIX/utils.zsh mv --cmd=\"mv -v\""
 ```
-
-## 2 PATH
-
-> add to env PATH
 
 # introduce
 
@@ -31,40 +32,38 @@ fmv "$CUSTOM_HOME/scripts/fzf/utils.sh mv --cmd=\"mv --backup=numbered -v\""
 # 1. 能够解析常用的参数
 # 2. 接受目录或文件
 # 3. 尽可能地解释用户传入的参数(很完美，几乎完全避免了和文件名或模式冲突)
-#   1. depth: 1,10 depth[1,10] 1h,1dchanged-time[1h,1d]
-#   2. time: 1d,1h [1d,1h] 2024-04-20,2024-04-25
-#   3. extensions: cc,py. => .cc files
-#   4. types: +x +i +h +Hx
-#   5. , 去除所有的depth标志
+#   1. ,10xf, max-depth=10 --type=x --type=f
+#   2. 1d,1h [1d,1h] 2024-04-20,2024-04-25
+#   3. cc,py, extensions=cc ...
+#   4. h,, exclude=*.h
+#   5. ,0 去除depth标志
+#   6. ,hi 切换--hidden --no-ignore
 usage: ff [OPTIONS] [DIRECTORIES or Files]
 
 OPTIONS:
-        -g glob-based search
-        -p full-path
-        -t char set, file types dfxlspebc (-t t...)
-        -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
-        -d int, max-depth
-        -H bool, --hidden
-        -I bool, --no-ignore
-        -P no-popup
-        -F full-window
-        -e extensions
-        -E exclude glob pattern
-        -O output to stdout
-        -q Cancel the first n matching file names (Optional default 1)
+    -g glob-based search
+    -p full-path
+    -t char set, file types dfxlspebc (-t t...)
+    -T string, changed after time ( 1min 1h 1d(default) 2weeks "2018-10-27 10:00:00" 2018-10-27)
+    -d int, max-depth
+    -H bool, --hidden
+    -I bool, --no-ignore
+    -e extensions
+    -E exclude glob pattern
+    -o select + -O
+    -q Cancel the first n matching file names (Optional default 1)
 
     --help
-    --split Explain the parameters passed in by the user as much as possible \
-       priority: file_and_directory > max_depth > type > depth_and_type > change_time > extensions
-    --extra-args pass -> fd
+    --window full none
+    --split Explain the parameters passed in by the user as much as possible
+    --args pass -> fd
 
 KEYBINDINGS:
     ctrl-s horizontal direction splitw
     ctrl-v vertical direction splitw
-    ctrl-o fzf-tmux-menu splitw
     alt-e subshell editor
     alt-enter open dirname file
-
+    enter current open file
 ```
 
 它拥有以下特性：

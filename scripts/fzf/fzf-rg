@@ -1,0 +1,289 @@
+#!/bin/env zsh
+
+# 匹配的文件数
+
+# 1. 能够解析常用的参数
+# 2. 接受目录或文件
+# 3. 能够在fzf过滤时，解释--iglob --hidden --no-ignore --max-depth --type --type-not
+# 4. 尽可能解释用户传入的参数
+# 5. 解决了\b的转义问题
+
+
+REPORT_BIN=tools-report
+
+report_info() { $REPORT_BIN --indent --level "info" -- "$@" > /dev/tty }
+report_warn() { $REPORT_BIN --indent --level "warn" -- "$@" > /dev/tty }
+report_help() { $REPORT_BIN --level "help" -- "$@" > /dev/tty; exit 0 }
+report_error() { $REPORT_BIN --indent --level "error" -- "$@" 2> /dev/tty; exit 1 }
+
+__help() {
+    local help_msg='usage: ss [OPTIONS] [pattern] [DIRECTORIES or Files]
+
+    OPTIONS:
+        -t file types,  Comma-separated
+        -T file types(not),  Comma-separated
+        -d int max-depth
+        -H bool --hidden
+        -I bool --no-ignore 
+        -q Cancel the first n matching file names (Optional, default 1)
+        -w world regex
+        -u[uu] (Optional default -u)
+        -m --max-count 
+        -L --follow
+
+        --sort -> rg --sortr (format default_val:other_val | val(default and other))
+        --Sort -> rg --sort (same as up)
+        --no-warm 初始查询字符串为空时，不进行热缓冲
+        --help 
+        --window full none
+        --split Explain the parameters passed in by the user as much as possible
+        --args pass -> rg
+
+    KEYBINDINGS:
+        ctrl-s horizontal direction splitw
+        ctrl-v vertical direction splitw
+        alt-e subshell editor
+        alt-enter open dirname file
+        enter current open file
+    '
+    report_help "${(@f)help_msg}"
+}
+
+__split() {
+    ((DEBUG)) && set -x
+    local item idx opt
+    local match class context flags
+    for item in "$@"; do 
+        { [[ -e $item ]] && ((o_q-- < 1)) } && {
+            [[ -d $item ]] && Directories+=$item || Files+=$item
+            continue
+        }
+        ((o_split)) && [[ $item =~ '^([[:alpha:]]([[:punct:]]).*\2)+[[:alpha:]]*$'  ]] && {
+            flags=( ${(s//)item##*[[:punct:]]} )
+            while [[ $item =~ '^[[:alpha:]]([[:punct:]]).*?\1' ]]; do
+                class=$MATCH[1] context=$MATCH[3,-2] match=$MATCH 
+                case $class in 
+                    f) 
+                        while (($#context)); do 
+                            if [[ $context =~ ^h ]]; then
+                                ((idx=$o_dynamic[(I)--hidden])) && unset "o_dynamic[idx]" || o_dynamic+=--hidden
+                            elif [[ $context =~ ^i ]]; then
+                                ((idx=$o_dynamic[(I)--no-ignore])) && unset "o_dynamic[idx]" || o_dynamic+=--no-ignore
+                            elif [[ $context =~ ^o ]]; then
+                                 o_dynamic[$o_dynamic[(i)--max-count*]]=--max-count=1
+                            elif [[ $context =~ ^s ]]; then
+                                ((flags[(I)r])) && opt=--sort= || opt=--sortr=
+                                ((idx=$o_dynamic[(I)$opt*])) && if [[ $o_dynamic[idx] == *$o_default_map[${opt%=}] ]]; then
+                                    o_dynamic[idx]=$opt$o_normal_map[${opt%=}]
+                                else
+                                    o_dynamic[idx]=$opt$o_default_map[${opt%=}]
+                                fi
+                            elif [[ $context =~ ^[[:digit:]]+ ]]; then
+                                unset "o_dynamic[${o_dynamic[(i)--max-depth*]}]"
+                                ((MATCH)) && o_dynamic+="--max-depth=$MATCH"
+                            else
+                                report_error "class:$class" "$context" "内容错误"
+                            fi
+                            context=${context#$MATCH}
+                        done
+                        ;;
+                    t)
+                        ((flags[(I)r])) && opt=--type-not= || opt=--type=
+                        o_types+=( $(print -- $opt${^${(s/,/)context}}) )
+                        ;;
+                    e)
+                        ((flags[(I)r])) && opt="--iglob=!" || opt="--iglob="
+                        o_iglobs+=( $(print -- \'$opt\*.${^${(@s/,/)context}}\') )
+                        ;;
+                    g)
+                        ((flags[(I)r])) && opt="--iglob=!" || opt="--iglob="
+                        o_iglobs+=( $(print -- \'$opt${^${(@s/,/)context}}\') )
+                        ;;
+                    *)
+                        report_error "class:$class" "类别错误"
+                        ;;
+                esac
+                item=${item#$match}
+                
+            done
+            continue
+        }
+        [[ -z $Pattern ]] || report_error "$item error, pattern is exists"
+        Pattern=$item
+    done
+    ((DEBUG)) && set +x
+}
+
+__handle_result() {
+    local trigger_key file_path line_number
+    trigger_key=${"${(@f)Results}"[1]}
+    file_path=${Results[(f)-1][(ws/:/)1]}
+    line_number=${(q)Results[(f)-1][(ws/:/)2]}
+    
+    if [[ "alt-s" == $trigger_key ]]; then
+        tmux splitw -bv ${EDITOR} $file_path +$line_number
+    elif [[ "alt-v" == $trigger_key ]]; then
+        tmux splitw -bh ${EDITOR} $file_path +$line_number
+    elif [[ "alt-enter" == $trigger_key ]]; then
+        $EDITOR ${file_path:h} > /dev/tty < /dev/tty
+    else
+        $EDITOR $file_path +$line_number > /dev/tty < /dev/tty
+    fi
+}
+
+
+main() {
+    local o_q o_types=() o_dynamic=() o_iglobs=() o_window o_split o_args=()
+    local -A o_default_map o_normal_map
+    zparseopts -D -E -F -A zopts -- \
+        q:: t: T: \
+        w x L u:: \
+        H I d: m: g: -Sort: -sort: \
+        -no-warm -window: -help -split -args: || exit 1
+    setopt extended_glob
+    setopt rematchpcre
+
+    ((DEBUG)) && set -x
+    
+    (($+zopts[-q])) && o_q=${zopts[-q]:-1}
+    (($+zopts[-t])) && o_types+=( $(print -- --type=${^${(s/,/)zopts[-t]}}) )
+    (($+zopts[-T])) && o_types+=( $(print -- --type-not=${^${(s/,/)zopts[-T]}}) )
+    (($+zopts[-w])) && o_args+="-w"
+    (($+zopts[-x])) && o_args+="-x"
+    (($+zopts[-L])) && o_args+="-L"
+    (($+zopts[-u])) && o_args+="-u$zopts[-u]"
+    (($+zopts[-H])) && o_dynamic+="--hidden"
+    (($+zopts[-I])) && o_dynamic+="--no-ignore"
+    (($+zopts[-d])) && o_dynamic+="--max-depth=$zopts[-d]"
+    (($+zopts[-m])) && o_dynamic+="--max-count=$zopts[-m]"
+    
+    (($+zopts[--Sort]))   && { o_default_map[--sort]=${zopts[--Sort]%:*}; o_normal_map[--sort]=${zopts[--Sort]#*:} }
+    (($+zopts[--sort]))   && { o_default_map[--sortr]=${zopts[--sort]%:*}; o_normal_map[--sortr]=${zopts[--sort]#*:} }
+    (($+zopts[--no-warm]))&& o_default_map[--no-warm]=1
+    (($+zopts[--split]))  && o_split=1
+    (($+zopts[--window])) && o_window=$zopts[--window]
+    (($+zopts[--args]))   && o_args+=(${=zopts[--args]})
+    (($+zopts[--help]))   && help
+
+    (($#o_default_map)) && {
+        for key val in "${(@kv)o_default_map}"; do 
+            o_dynamic+="${key}=${val}"
+        done
+    }
+    
+    ((DEBUG)) && set +x
+    local file_rg file_fzf file_preview_size
+    local Directories=() Files=() Pattern Results
+    local fbin cmd fopts exitcode  
+    local change_preview change_reload toggle_search initial_search
+    
+    file_rg=/tmp/rg-$$
+    file_fzf=/tmp/fzf-$$
+    file_preview_size=/tmp/preview-size-$$
+    trap "command rm -f $file_rg $file_fzf $file_preview_size" EXIT SIGINT SIGTERM
+
+    (($#)) && __split "$@"
+
+    [[ $o_window == full ]] && fbin=(fzf-tmux -p100%,100%) || fbin=(fzf-tmux $FZF_GREP_TMUX_OPTS)
+    [[ $o_window == none ]] && fbin=
+    
+    cmd="command rg --line-number --with-filename --no-heading --color=always --smart-case $o_args"
+    
+    change_reload="
+    setopt extended_glob
+    local item dynamic=($o_dynamic) types=($o_types) iglobs=(\\\"${(@)o_iglobs}\\\")
+    [[ \$FZF_QUERY == *--* ]] && for item in \${(s/ /)\${FZF_QUERY##*--}}; do 
+        while ((\$#item)); do
+            case \$item in
+                o) dynamic[\$dynamic[(i)--max-count*]]=--max-count=1; item=${item#,##} ;;
+                h) ((idx=\$dynamic[(I)--hidden])) && unset \\\"dynamic[idx]\\\" || dynamic+=--hidden; item= ;;
+                i) ((idx=\$dynamic[(I)--no-ignore])) && unset \\\"dynamic[idx]\\\" || dynamic+=--no-ignore; item= ;;
+                s) ((idx=\$dynamic[(I)--sortr[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sortr] ]] && dynamic[idx]=--sortr=$o_normal_map[--sortr] || dynamic[idx]=--sortr=$o_default_map[--sortr] }; item= ;;
+                S) ((idx=\$dynamic[(I)--sort[[:space:]=]*])) && { [[ \$dynamic[idx] == *$o_default_map[--sort] ]] && dynamic[idx]=--sort=$o_normal_map[--sort] || dynamic[idx]=--sort=$o_default_map[--sort] }; item= ;;
+                <->) unset \\\"dynamic[\$dynamic[(i)--max-depth*]]\\\"; ((\$item)) && dynamic+=--max-depth=\$item; item= ;;
+                [[:lower:]]##,,*) types+=--type-not=\${item[(ws/,,/)1]}; item=\${item#*,,} ;;
+                [[:lower:]]##,*) types+=--type=\${item[(ws/,/)1]}; item=\${item#*,} ;;
+                *) iglobs+=\\\"'--iglob=\$item'\\\"; item= ;;
+            esac
+        done
+    done
+    if [[ -n \$FZF_QUERY ]]; then
+        print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)iglobs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
+    else
+        print -r \\\"reload(:)\\\"
+    fi
+    "
+
+    change_preview="
+    typeset lines=\$((FZF_LINES - 3))  match_count=\$FZF_MATCH_COUNT preview_lines=\${FZF_PREVIEW_LINES:-\${\$(<$file_preview_size):-0}}
+    typeset b1=10000 b2=1000 b3=100 per1=0 per2=30 per3=60 result
+    # print -- ----------------------- >> string.log
+    # print lines:\$lines match_count:\$match_count preview_lines:\$preview_lines >> string.log
+    if ((match_count == 0 || match_count > b1)); then
+        result=0
+    elif ((match_count > b2)); then
+        result=\$(( ((b1 - match_count) * (per2 - per1) / (b1 - b2)  + per1) * lines / 100 ))
+    elif ((match_count > b3)); then
+        result=\$(( ((b2 - match_count) * (per3 - per2) / (b2 - b3)  + per2) * lines / 100 ))
+    elif ((match_count > (100 - per3) * lines / 100)); then
+        result=\$(( per3 * lines / 100 ))
+    else
+        result=$\((lines - match_count))
+    fi
+    # print lines:\$lines match_count:\$match_count preview_lines:\$preview_lines result:\$result >> string.log
+    [[ -z \$FZF_PREVIEW_LINES ]] &&  print \$result > $file_preview_size 
+    print \\\"change-preview-window(\$result)\\\"
+    "
+
+    toggle_search="
+    if [[ ! \$FZF_PROMPT =~ Rg ]]; then
+        print \\\"rebind(change)+change-prompt(Rg> )+disable-search+transform-query:print -r \\\{q} > $file_fzf; cat $file_rg\\\"
+    else
+        print \\\"unbind(change)+change-prompt(Fzf> )+enable-search+transform-query:print -r \\\{q} > $file_rg; cat $file_fzf\\\"
+    fi
+    "
+
+    initial_search="
+    if [[ -z '\{q}' ]]; then
+        if (($o_default_map[--no-warm])); then
+            print \\\"ignore\\\"
+        else
+            print \\\"execute-silent:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files} &> /dev/null &\\\"
+        fi
+    else
+        print \\\"reload:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files}\\\"
+    fi
+    "
+
+    fopts="
+    $FZF_DEFAULT_OPTS
+    --layout=reverse-list --disabled +m
+    --query '$Pattern'
+    --prompt \"Rg> \"
+    --exact
+    --bind=\"start:transform:$initial_search\"
+    --bind \"change:transform:$change_reload\"
+    --bind \"result:transform:$change_preview\"
+    --bind \"resize:transform:$change_preview\"
+    --bind \"ctrl-g:transform:$toggle_search\"
+    --delimiter :
+    --header-first --header=\"keybindings:: C-s, C-v, C-o, A-e, A-enter | pattern:: h i o <-> *.cc cpp, c,, cpp,c,java,,\"
+    --preview-window \"up:~1,+{2}/2:border-down\"
+    --preview 'bat --style=numbers,header,changes,snip --color=always --highlight-line {2} -- {1}'
+    --expect \"alt-s,alt-v,alt-o,alt-enter\"
+    --bind=\"alt-e:execute(${EDITOR} {1} +{2} > /dev/tty < /dev/tty)\"
+    --bind=\"alt-s:accept,alt-v:accept,alt-enter:accept,enter:accept\"
+    $FZF_CUSTOM_OPTS
+    "
+    
+    Results=$(: | FZF_DEFAULT_OPTS=$fopts ${fbin:-fzf})
+    exitcode=$?
+
+    if ((exitcode == 1)); then report_warn  "没有搜索到任何相关的文件";
+    elif ((exitcode == 2)); then report_error;
+    elif ((exitcode == 130)); then :;
+    else __handle_result;fi
+    
+    return $exitcode
+}
+main "$@"
