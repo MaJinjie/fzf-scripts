@@ -172,7 +172,7 @@ main() {
     }
     
     ((DEBUG)) && set +x
-    local file_rg file_fzf file_preview_size
+    local file_rg file_fzf file_preview_size file_child_id
     local Directories=() Files=() Pattern Results
     local fbin cmd fopts exitcode  
     local change_preview change_reload toggle_search initial_search
@@ -180,6 +180,7 @@ main() {
     file_rg=/tmp/rg-$$
     file_fzf=/tmp/fzf-$$
     file_preview_size=/tmp/preview-size-$$
+    file_child_id=/tmp/child-id-$$
     trap "command rm -f $file_rg $file_fzf $file_preview_size" EXIT SIGINT SIGTERM
 
     (($#)) && __split "$@"
@@ -208,7 +209,7 @@ main() {
         done
     done
     if [[ -n \$FZF_QUERY ]]; then
-        print -r \\\"reload($cmd \${(u)dynamic} \${(u)types} \${(u)iglobs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
+        print -r \\\"reload(kill \$(<$file_child_id) &> /dev/null; $cmd \${(u)dynamic} \${(u)types} \${(u)iglobs} -- '\${\${FZF_QUERY%--*}%% #}' ${Directories} ${Files} || true)\\\"
     else
         print -r \\\"reload(:)\\\"
     fi
@@ -248,10 +249,11 @@ main() {
         if (($o_default_map[--no-warm])); then
             print \\\"ignore\\\"
         else
-            print \\\"execute-silent:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files} &> /dev/null &\\\"
+            local random_str=\$(cat /dev/urandom | tr -cd '[:lower:]' | head -c 4)
+            print \\\"execute-silent:$cmd $o_dynamic $o_types $o_iglobs -- \$random_str ${Directories} ${Files} &; print \\\\\$! > $file_child_id\\\"
         fi
     else
-        print \\\"reload:$cmd $o_dynamic $o_types -- \\\{q} ${Directories} ${Files}\\\"
+        print \\\"reload:$cmd $o_dynamic $o_types $o_iglobs -- \\\{q} ${Directories} ${Files}\\\"
     fi
     "
 

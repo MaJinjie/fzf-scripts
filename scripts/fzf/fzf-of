@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+
+# Desc: open most recently viewed files in nvim with fzf
+
+get_oldfiles() {
+    [[ -z "$oldfiles" ]] && oldfiles="/tmp/nv-oldfiles.tmp"
+    [[ -z "${filterfiles}" ]] && filterfiles="/tmp/nv-filterfiles.tmp"
+
+    nvim --headless -c "call append(0, v:oldfiles)" \
+        -c "write! $oldfiles" \
+        -c exit 1> /dev/null 2>&1
+
+    [[ -e ${filterfiles} ]] && truncate --size 0 ${filterfiles}
+    while read -r file; do
+
+        if [[ -e ${file} && -r ${file} && ! ${file} =~ ^/tmp && ! ${file} =~ .git ]]; then
+            echo "${file}" >> ${filterfiles}
+        fi
+    done < "${oldfiles}"
+}
+fzf_search() {
+    if [[ $# -gt 0 ]]; then
+        filter=1
+        fzf_bin=
+    fi
+
+    readarray -t files < <(
+        lscolors < "${filterfiles}" | ${fzf_bin:-fzf} \
+            --prompt="Oldfiles> " ${filter:+--filter "$*"} \
+            --scheme history --exact \
+            --delimiter / --nth -1 \
+            --select-1 --exit-0 --header-first \
+            --header "keybindings:C-s(hsp), C-v(vsp), C-o(fzf-tmux-menu), A-e(execute editor), Enter(editor|print)" \
+            --expect "ctrl-s,ctrl-v,ctrl-o" \
+            --bind="alt-e:execute(${EDITOR} {+} > /dev/tty < /dev/tty)" \
+            --bind="ctrl-s:accept" \
+            --bind="ctrl-v:accept" \
+            --bind="ctrl-o:accept" \
+            --bind="enter:accept-or-print-query"
+    )
+
+    [[ ${filter} ]] && files=("${files[0]}")
+}
+
+exec_action() {
+    if [[ ${#files[@]} -eq 1 ]]; then
+        mkdir -p "$(dirname "${files[0]}")" &> /dev/null
+        "${EDITOR}" "${files[@]}" > /dev/tty < /dev/tty
+        return 0
+    fi
+
+    trigger_key=${files[0]}
+    unset "files[0]"
+
+    if [[ "${trigger_key}" == "ctrl-s" ]]; then
+        tmux splitw "-bh" zsh -c "${EDITOR} ${files[*]}"
+    elif [[ "${trigger_key}" == "ctrl-v" ]]; then
+        tmux splitw "-bv" zsh -c "${EDITOR} ${files[*]}"
+    elif [[ "${trigger_key}" == "ctrl-o" ]]; then
+        "$CUSTOM_HOME/scripts/tmux/tmux-menu" $(realpath "${files[@]}")
+    else
+        "${EDITOR}" "${files[@]}" > /dev/tty < /dev/tty
+    fi
+}
+
+main() {
+    [[ -v TMUX ]] && command -v fzf-tmux &> /dev/null && fzf_bin="fzf-tmux $FZF_TMUX_OPTS"
+
+    typeset filterfiles
+    typeset -a files
+
+    typeset args
+
+    args=$(getopt -o P -n "$0" -- "$@")
+    if [[ "$?" -ne 0 ]]; then
+        echo "getopt parse error, args:${*}"
+        exit 1
+    fi
+    eval set -- "$args"
+
+    while true; do
+        case $1 in
+        -P)
+            fzf_bin=
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "flag error"
+            exit 1
+            ;;
+
+        esac
+    done
+
+    get_oldfiles
+
+    if [[ $# -eq 1 && $1 == - ]]; then
+        files[0]=$(sed -n '1p' "${filterfiles}")
+    else
+        fzf_search "$@"
+    fi
+
+    [[ ${#files[@]} -gt 0 ]] && exec_action
+}
+
+main "$@"

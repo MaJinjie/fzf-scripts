@@ -1,0 +1,29 @@
+#!/bin/env zsh
+
+REPORT_BIN=tools-report
+report_warn() { $REPORT_BIN --indent --level "warn" -- "$@" > /dev/tty }
+
+main() {
+    local fbin cmd fopts exitcode
+    local result
+
+    [[ $TMUX_SESSION_NAME != "manpager" ]] && fbin=(fzf-tmux $FZF_TMUX_OPTS)
+
+    cmd="man -k ."
+    fopts="
+    $FZF_DEFAULT_OPTS
+    +m --prompt \" Man> \" 
+    --query \"$*\"
+    --nth 1 --exact
+    --select-1 --exit-0
+    "
+
+    result=$(eval $cmd | FZF_DEFAULT_OPTS=$fopts ${fbin:-fzf})
+    exitcode=$?
+
+    if ((exitcode == 1)); then report_warn  "没有搜索到任何相关的man";
+    elif ((exitcode == 130)); then :;
+    else man $result[(ws/ /)1] | $EDITOR -c 'Man!' ;fi
+}
+
+main "$@"
